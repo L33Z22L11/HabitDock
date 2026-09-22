@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">知时 · HabitDock</string>
+    <string name="widget_description">根据时间与使用习惯，在桌面推荐你可能需要的 App</string>
+    <string name="widget_setup">点击打开知时，开启使用情况访问权限</string>
+    <string name="search_apps">应用名或包名</string>
+    <string name="picker_count">已选 %1$d 个 · 即时生效</string>
+    <string name="no_search_results">没有匹配的应用，试试应用名或包名</string>
+    <string name="picker_search_count">已选 %1$d 个 · 即时生效 · 找到 %2$d 个</string>
+    <string name="widget_roundness">图标圆角 · %1$d%%</string>
+    <string name="widget_scale">图标大小 · %1$d%%</string>
+    <string name="widget_capacity">%1$d 列 × %2$d 行 · %3$d 个应用%4$s</string>
+    <string name="preview_time">预览 %1$s</string>
+    <string name="color_channel">%1$s · %2$d</string>
+</resources>

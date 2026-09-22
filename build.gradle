@@ -1,0 +1,19 @@
+plugins {
+    id 'com.android.application' version '8.9.2' apply false
+    id 'com.diffplug.spotless' version '8.10.2'
+}
+
+spotless {
+    java {
+        target 'app/src/**/*.java', 'tests/**/*.java'
+        eclipse('4.26').configFile('config/eclipse-java.xml')
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    format 'text', {
+        target '*.gradle', '*.properties', '*.md', '.gitignore', '.gitattributes', '.editorconfig',
+                '.github/**/*.yml', 'docs/**/*.md', 'scripts/**/*.sh', 'scripts/**/*.py', 'config/**/*.xml'
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}

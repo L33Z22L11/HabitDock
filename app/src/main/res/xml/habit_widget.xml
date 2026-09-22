@@ -1,0 +1,7 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" tools:targetApi="31"
+    android:minWidth="250dp" android:minHeight="110dp" android:minResizeWidth="90dp" android:minResizeHeight="64dp"
+    android:targetCellWidth="5" android:targetCellHeight="2"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/widget"
+    android:configure="dev.habitdock.WidgetSettingsActivity" android:widgetFeatures="reconfigurable|configuration_optional"
+    android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

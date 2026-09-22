@@ -1,0 +1,67 @@
+plugins {
+    id 'com.android.application'
+}
+
+def appVersion = new Properties()
+rootProject.file('version.properties').withInputStream { appVersion.load(it) }
+def signingValues = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
+        .collectEntries { name -> [(name): providers.environmentVariable(name).orNull] }
+def hasReleaseSigning = signingValues.values().every { it != null && !it.isEmpty() }
+
+android {
+    namespace 'dev.habitdock'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'dev.habitdock'
+        minSdk 26
+        targetSdk 35
+        versionCode appVersion.getProperty('versionCode').toInteger()
+        versionName appVersion.getProperty('versionName')
+        testInstrumentationRunner(project.hasProperty('touchTests') ? 'dev.habitdock.PickerTouchRunner' : 'dev.habitdock.SmokeRunner')
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(signingValues.ANDROID_KEYSTORE_PATH)
+                storePassword signingValues.ANDROID_KEYSTORE_PASSWORD
+                keyAlias signingValues.ANDROID_KEY_ALIAS
+                keyPassword signingValues.ANDROID_KEY_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Release builds must never silently fall back to a debug or unsigned APK.
+tasks.register('verifyReleaseSigning') {
+    doLast {
+        if (!hasReleaseSigning) {
+            throw new GradleException('Release signing is not configured. See docs/RELEASING.md.')
+        }
+    }
+}
+tasks.configureEach {
+    if (name == 'preReleaseBuild') {
+        dependsOn 'verifyReleaseSigning'
+    }
+}
+
+dependencies {
+    // FileProvider is pinned to the version compatible with this compile SDK.
+    //noinspection GradleDependency
+    implementation 'androidx.core:core:1.16.0'
+}
