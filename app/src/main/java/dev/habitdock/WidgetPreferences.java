@@ -27,6 +27,15 @@ final class WidgetPreferences {
         return columns * rows - (more ? 1 : 0);
     }
 
+    static WidgetPreferences defaults() {
+        return new WidgetPreferences(5, 2, 82, true, false, true);
+    }
+
+    boolean sameAs(WidgetPreferences other) {
+        return columns == other.columns && rows == other.rows && percent == other.percent && more == other.more
+                && actions == other.actions && moreTime == other.moreTime;
+    }
+
     private static String key(int id) {
         return id == AppWidgetManager.INVALID_APPWIDGET_ID ? "widget.default." : "widget." + id + ".";
     }

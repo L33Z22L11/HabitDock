@@ -2,7 +2,6 @@ package dev.habitdock;
 
 import android.appwidget.AppWidgetManager;
 import android.content.*;
-import android.graphics.Color;
 import java.util.Arrays;
 
 /** One appearance for every application icon, independent of widget layout. */
@@ -15,14 +14,18 @@ final class IconStyle {
         this.fillColor = fillColor == 0 ? 0 : fillColor | 0xff000000;
     }
 
-    int backgroundColor(Context c) {
-        return !fillBackground
-                ? Color.TRANSPARENT
-                : fillColor == 0 ? c.getColor(R.color.widget_icon_background) : fillColor;
+    String cacheKey(Context c) {
+        // App-provided icon resources can themselves differ between light/dark mode.
+        return roundness + ":" + fillBackground + ":" + fillColor + ":"
+                + (c.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK);
     }
 
-    String cacheKey(Context c) {
-        return roundness + ":" + backgroundColor(c);
+    static IconStyle defaults() {
+        return new IconStyle(40, false, 0);
+    }
+
+    boolean sameAs(IconStyle other) {
+        return roundness == other.roundness && fillBackground == other.fillBackground && fillColor == other.fillColor;
     }
 
     static synchronized IconStyle load(Context c) {

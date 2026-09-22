@@ -1,5 +1,16 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
     <path android:fillColor="#152B2B" android:pathData="M0,0h48v48h-48z" />
-    <path android:fillColor="#8FE3CE" android:pathData="M12,10h10v10h-10zM26,10h10v10h-10zM12,24h10v10h-10z" />
-    <path android:strokeColor="#8FE3CE" android:strokeWidth="2.5" android:fillColor="#00000000" android:pathData="M36,30a6,6 0,1 1,-12,0a6,6 0,1 1,12,0M30,26v4l3,2" />
+    <!-- Aligned centers; enlarge the outlined clock to balance the solid squares. -->
+    <path android:fillColor="#8FE3CE"
+        android:pathData="M10,10h12v12h-12zM26,10h12v12h-12zM10,26h12v12h-12z" />
+    <group android:name="clock" android:pivotX="32" android:pivotY="32"
+        android:scaleX="1.25" android:scaleY="1.25">
+        <path android:strokeColor="#8FE3CE" android:strokeWidth="2" android:fillColor="#00000000"
+            android:pathData="M37,32a5,5 0,1 1,-10,0a5,5 0,1 1,10,0" />
+        <path android:strokeColor="#8FE3CE" android:strokeWidth="2" android:fillColor="#00000000"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M32,29v3l2.25,1.5" />
+    </group>
 </vector>

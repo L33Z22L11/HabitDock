@@ -100,6 +100,14 @@ public final class HabitWidget extends AppWidgetProvider {
     }
 
     static void update(Context c, boolean force) {
+        update(c, force, false);
+    }
+
+    static void repaint(Context c) {
+        update(c, false, true);
+    }
+
+    private static void update(Context c, boolean force, boolean appearanceOnly) {
         AppWidgetManager manager = AppWidgetManager.getInstance(c);
         int[] ids = manager.getAppWidgetIds(new ComponentName(c, HabitWidget.class));
         if (ids.length == 0)
@@ -108,7 +116,12 @@ public final class HabitWidget extends AppWidgetProvider {
         synchronized (Repository.PRIVACY_LOCK) {
             version = Repository.privacyVersion;
         }
-        Repository.Current current = Repository.current(c, force);
+        Repository.Current current;
+        if (appearanceOnly) {
+            long stamp = RefreshPolicy.last(c), cutoff = stamp == 0 ? System.currentTimeMillis() : stamp;
+            current = new Repository.Current(Repository.loadAt(c, cutoff, cutoff, false), stamp);
+        } else
+            current = Repository.current(c, force);
         Repository.Snapshot data = current.data;
         int max = 0;
         for (int id : ids) {
@@ -127,10 +140,12 @@ public final class HabitWidget extends AppWidgetProvider {
         IconStyle style = IconStyle.load(c);
         Map<String, Bitmap> shaped = new HashMap<>();
         for (Map.Entry<String, Bitmap> icon : icons.entrySet())
-            shaped.put(icon.getKey(), WidgetIcons.style(icon.getValue(), style.roundness, style.backgroundColor(c)));
+            shaped.put(icon.getKey(), WidgetIcons.style(c, icon.getValue(), style));
         boolean published = false;
-        String stamp = Instant.ofEpochMilli(current.stamp).atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("HH:mm"));
+        String stamp = current.stamp == 0
+                ? ""
+                : Instant.ofEpochMilli(current.stamp).atZone(ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("HH:mm"));
         for (int id : ids) {
             WidgetPreferences layout = WidgetPreferences.load(c, id);
             Bundle options = manager.getAppWidgetOptions(id);

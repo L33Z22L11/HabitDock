@@ -38,8 +38,66 @@ public final class SmokeRunner extends Instrumentation {
     public void onStart() {
         Bundle results = new Bundle();
         try {
+            if (!android.os.Build.HARDWARE.contains("ranchu") && !android.os.Build.HARDWARE.contains("goldfish"))
+                throw new AssertionError("this test may only reset an emulator");
             Context c = getTargetContext();
             Repository.prefs(c).edit().clear().commit();
+            check(RecommendationLimit.load(c) == 20, "recommendation limit defaults to twenty");
+            List<Predictor.Prediction> limitFixture = new ArrayList<>();
+            Set<String> fixturePins = new HashSet<>();
+            for (int i = 0; i < 75; i++) {
+                String pkg = "test.limit." + i;
+                limitFixture.add(new Predictor.Prediction(pkg, 75 - i, "fixture"));
+                if (i < 25)
+                    fixturePins.add(pkg);
+            }
+            List<Predictor.Prediction> capped = RecommendationLimit.apply(limitFixture, Set.of(), 20);
+            check(capped.size() == 20 && capped.get(19).pkg.equals("test.limit.19"),
+                    "cap keeps exactly the highest ranked twenty suggestions in order");
+            capped = RecommendationLimit.apply(limitFixture, fixturePins, 20);
+            check(capped.size() == 45 && capped.stream().filter(p -> fixturePins.contains(p.pkg)).count() == 25
+                    && capped.get(44).pkg.equals("test.limit.44"),
+                    "all pins remain visible and do not consume the suggestion limit");
+            check(RecommendationLimit.apply(limitFixture.subList(0, 3), Set.of(), 20).size() == 3,
+                    "limit never pads sparse results");
+            check(new AppUpdates.Release("v0.4.10").newerThan("0.4.9")
+                    && !new AppUpdates.Release("v0.4.9").newerThan("0.4.10")
+                    && new AppUpdates.Release("v1.0.0").newerThan("0.99.99"),
+                    "updates compare numeric version components rather than text");
+            check(!new AppUpdates.Release("v0.4.5").newerThan("0.4.5")
+                    && new AppUpdates.Release("v0.4.5").newerThan("0.4.5-beta.1")
+                    && !new AppUpdates.Release("v0.4.5").newerThan("0.4.6-beta.1"),
+                    "same version and newer local previews do not prompt a downgrade");
+            AppUpdates.Release release = AppUpdates.parse(
+                    "{\"tag_name\":\"v0.4.6\",\"draft\":false,\"prerelease\":false,\"html_url\":\"https://example.com\"}");
+            check(release.newerThan("0.4.5")
+                    && release.url().equals("https://github.com/L33Z22L11/HabitDock/releases/tag/v0.4.6"),
+                    "release destination is always the project GitHub page");
+            check(AppUpdates.fromRedirect(AppUpdates.RELEASES + "/tag/v0.4.6").newerThan("0.4.5"),
+                    "public latest-release redirect supports API rate-limit fallback");
+            for (String invalid : new String[]{null, "https://example.com/releases/tag/v0.4.6",
+                    AppUpdates.RELEASES + "/tag/v0.4.6-beta.1", AppUpdates.RELEASES + "/tag/v0.4.6/extra"}) {
+                boolean rejected = false;
+                try {
+                    AppUpdates.fromRedirect(invalid);
+                } catch (java.io.IOException expected) {
+                    rejected = true;
+                }
+                check(rejected, "unexpected latest-release destinations cannot prompt or navigate elsewhere");
+            }
+            for (String badRelease : new String[]{"not-json", "{}",
+                    "{\"tag_name\":\"v0.4.6\",\"draft\":true,\"prerelease\":false}",
+                    "{\"tag_name\":\"v0.4.6\",\"draft\":false,\"prerelease\":true}",
+                    "{\"tag_name\":\"v0.4.6-beta.1\",\"draft\":false,\"prerelease\":false}",
+                    "{\"tag_name\":\"unexpected\",\"draft\":false,\"prerelease\":false}"}) {
+                boolean rejected = false;
+                try {
+                    AppUpdates.parse(badRelease);
+                } catch (java.io.IOException expected) {
+                    rejected = true;
+                }
+                check(rejected, "malformed, draft and prerelease responses cannot report an update");
+            }
             List<String> installed = new ArrayList<>(Repository.apps(c).keySet());
             check(installed.size() >= 2, "launcher app discovery");
             String visible = installed.get(0), secret = installed.get(1);
@@ -109,6 +167,11 @@ public final class SmokeRunner extends Instrumentation {
                     .equals(reopened.data.predictions.stream().map(p -> p.pkg)
                             .collect(java.util.stream.Collectors.toList())),
                     "fresh recommendation order remains unchanged on reopen");
+            Repository.prefs(c).edit().putInt("recommendation_limit", 1).commit();
+            Repository.Current limited = Repository.current(c, false);
+            check(limited.data.predictions.size() <= 1 && limited.stamp == reopened.stamp,
+                    "repository applies the changed cap without advancing recommendation time");
+            Repository.prefs(c).edit().remove("recommendation_limit").commit();
             runtime.edit().putLong("last_success", now - 31 * 60 * 1000L).commit();
             check(Repository.current(c, false).stamp > now - 31 * 60 * 1000L,
                     "overdue automatic entry recomputes recommendations");
@@ -132,19 +195,72 @@ public final class SmokeRunner extends Instrumentation {
             android.graphics.Bitmap transparent = android.graphics.Bitmap.createBitmap(128, 128,
                     android.graphics.Bitmap.Config.ARGB_8888);
             transparent.setPixel(64, 64, android.graphics.Color.RED);
-            android.graphics.Bitmap filledLight = WidgetIcons.style(transparent, 40,
-                    light.getColor(R.color.widget_icon_background)),
-                    filledDark = WidgetIcons.style(transparent, 40, dark.getColor(R.color.widget_icon_background));
-            check(filledLight.getPixel(64, 20) == light.getColor(R.color.widget_icon_background)
-                    && filledDark.getPixel(64, 20) == dark.getColor(R.color.widget_icon_background)
+            android.graphics.Bitmap filledLight = WidgetIcons.style(transparent, 40, 0xfff5f6f5),
+                    filledDark = WidgetIcons.style(transparent, 40, 0xff252b29);
+            check(filledLight.getPixel(64, 20) == 0xfff5f6f5
+                    && filledDark.getPixel(64, 20) == 0xff252b29
                     && filledLight.getPixel(64, 20) != filledDark.getPixel(64, 20),
-                    "transparent background fills follow light and dark resources");
+                    "custom light and dark background fills retain the selected RGB");
             check(filledLight.getPixel(64, 64) == android.graphics.Color.RED
                     && android.graphics.Color.alpha(filledLight.getPixel(0, 0)) == 0,
                     "background fill preserves opaque artwork and clipped corners");
             check(android.graphics.Color.alpha(
                     WidgetIcons.style(transparent, 40, android.graphics.Color.TRANSPARENT).getPixel(64, 20)) == 0,
                     "disabled background fill preserves transparent pixels");
+            android.graphics.Bitmap edges = android.graphics.Bitmap.createBitmap(128, 128,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas edgeCanvas = new android.graphics.Canvas(edges);
+            android.graphics.Paint edgePaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            edgePaint.setColor(0xff5681c7);
+            edgeCanvas.drawCircle(64, 64, 45, edgePaint);
+            edgePaint.setColor(android.graphics.Color.WHITE);
+            edgeCanvas.drawCircle(64, 64, 24, edgePaint);
+            IconStyle adaptiveFill = new IconStyle(40, true, 0);
+            check(WidgetIcons.style(light, edges, adaptiveFill).getPixel(64, 5) == 0xff5681c7,
+                    "circular contour sampling ignores transparent padding and center artwork");
+            edges.setPixel(0, 0, 0x20000000);
+            edges.setPixel(127, 127, 0x20000000);
+            android.graphics.Bitmap completed = WidgetIcons.style(light, edges, adaptiveFill);
+            check(completed.getPixel(64, 5) == 0xff5681c7
+                    && completed.getPixel(64, 64) == android.graphics.Color.WHITE
+                    && android.graphics.Color.alpha(completed.getPixel(0, 0)) == 0,
+                    "adaptive fill ignores shadows, preserves artwork and uses chosen corner mask");
+            check(edges.getPixel(64, 5) == 0 && edges.getPixel(0, 0) == 0x20000000,
+                    "analysis and rendering leave source artwork unchanged");
+            android.graphics.Bitmap gradient = android.graphics.Bitmap.createBitmap(128, 128,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            edgePaint.setShader(new android.graphics.LinearGradient(0, 0, 0, 128,
+                    0xff4060b0, 0xffa0b050, android.graphics.Shader.TileMode.CLAMP));
+            new android.graphics.Canvas(gradient).drawCircle(64, 64, 48, edgePaint);
+            edgePaint.setShader(null);
+            android.graphics.Bitmap gradientFill = WidgetIcons.style(light, gradient, adaptiveFill);
+            check(android.graphics.Color.red(gradientFill.getPixel(64, 4)) < 75
+                    && android.graphics.Color.red(gradientFill.getPixel(64, 123)) > 150
+                    && gradientFill.getPixel(64, 64) == gradient.getPixel(64, 64),
+                    "Android antialiased circular gradient extends top and bottom independently");
+            android.graphics.Bitmap multicolor = android.graphics.Bitmap.createBitmap(128, 128,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            for (int y = 0; y < 128; y++)
+                for (int x = 0; x < 128; x++)
+                    if (Math.hypot(x - 64, y - 64) <= 48)
+                        multicolor.setPixel(x, y, x < 64 ? android.graphics.Color.RED : android.graphics.Color.BLUE);
+            check(WidgetIcons.style(light, multicolor, adaptiveFill).getPixel(64, 5) == light
+                    .getColor(R.color.widget_icon_background)
+                    && WidgetIcons.style(dark, multicolor, adaptiveFill).getPixel(64, 5) == dark
+                            .getColor(R.color.widget_icon_background),
+                    "abrupt multicolor edges fall back to theme-specific plate");
+            check(WidgetIcons.style(light, transparent, adaptiveFill).getPixel(64, 5) == light
+                    .getColor(R.color.widget_icon_background)
+                    && WidgetIcons.style(dark, transparent, adaptiveFill).getPixel(64, 5) == dark
+                            .getColor(R.color.widget_icon_background),
+                    "tiny irregular artwork uses themed fallback");
+            android.graphics.Bitmap blank = android.graphics.Bitmap.createBitmap(128, 128,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            check(WidgetIcons.style(light, blank, adaptiveFill).getPixel(64, 64) == 0,
+                    "fully transparent artwork remains empty");
+            check(WidgetIcons.style(light, edges, new IconStyle(40, true, 0xffabcdef)).getPixel(64, 5) == 0xffabcdef
+                    && WidgetIcons.style(light, edges, new IconStyle(40, false, 0)).getPixel(64, 5) == 0,
+                    "explicit color and disabled fill remain independent of adaptive sampling");
             android.graphics.Rect frame = new android.graphics.Rect(0, 24, 400, 776),
                     bottomAnchor = new android.graphics.Rect(8, 704, 196, 810);
             android.graphics.Rect bubble = BubblePlacement.place(frame, bottomAnchor, 336, 80, 12, 4);
@@ -213,13 +329,14 @@ public final class SmokeRunner extends Instrumentation {
             IconStyle migrated = IconStyle.load(c);
             check(migrated.roundness == 75 && migrated.fillBackground && migrated.fillColor == 0xffe2c4dd,
                     "upgrade migrates legacy appearance with safe fallback for a removed widget");
-            check(migrated.backgroundColor(light) == 0xffe2c4dd && migrated.backgroundColor(dark) == 0xffe2c4dd,
+            check(WidgetIcons.style(light, edges, migrated).getPixel(64, 5) == 0xffe2c4dd
+                    && WidgetIcons.style(dark, edges, migrated).getPixel(64, 5) == 0xffe2c4dd,
                     "custom global fill persists across themes");
             check(!migrated.cacheKey(c).equals(new IconStyle(75, true, 0xffabcdef).cacheKey(c)),
                     "bitmap cache distinguishes custom colors");
             IconStyle automatic = new IconStyle(40, true, 0);
             check(!automatic.cacheKey(light).equals(automatic.cacheKey(dark)),
-                    "system fill changes cache key when theme changes");
+                    "theme-specific source icons have separate cache entries in adaptive mode");
             long stampBeforeStyle = RefreshPolicy.last(c);
             new IconStyle(100, true, 0xffe2c4dd).save(c);
             Repository.prefs(c).edit().putInt("widget.default.roundness", 0).putInt("recommendation_style_widget", 0)
@@ -384,6 +501,30 @@ public final class SmokeRunner extends Instrumentation {
                 failedCleanly = !failed.exists();
             }
             check(failedCleanly, "failed export leaves no partial package");
+            long cleanupNow = System.currentTimeMillis(), day = 24 * 60 * 60 * 1000L;
+            java.io.File boundary = new java.io.File(shareDir, "test-boundary.apk");
+            java.nio.file.Files.write(boundary.toPath(), new byte[]{4});
+            check(copy.setLastModified(cleanupNow - 2 * day) && boundary.setLastModified(cleanupNow - day)
+                    && split.setLastModified(cleanupNow - 2 * day), "cache cleanup fixture timestamps set");
+            ApkShare.prune(shareDir, cleanupNow);
+            check(!copy.exists() && bundle.exists() && boundary.exists(),
+                    "cleanup removes expired exports but retains recent and boundary-age shares");
+            check(split.exists(), "cleanup is limited to the shared-apks directory");
+            for (int attempt = 0; attempt < 2; attempt++) {
+                java.nio.file.Files.write(copy.toPath(), new byte[]{5});
+                if (!copy.setLastModified(cleanupNow - 2 * day))
+                    throw new AssertionError("cannot age launch-cleanup fixture");
+                Activity main = startActivitySync(new Intent(c, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                waitForIdleSync();
+                Repository.WORK.submit(() -> {
+                }).get();
+                check(!copy.exists() && bundle.exists() && split.exists(),
+                        "opening app clears expired shares without another export, attempt " + attempt);
+                runOnMainSync(main::finish);
+                waitForIdleSync();
+            }
+            boundary.delete();
             copy.delete();
             split.delete();
             bundle.delete();

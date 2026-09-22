@@ -25,6 +25,32 @@ final class WidgetIcons {
         return style(source, roundness, Color.TRANSPARENT);
     }
 
+    static Bitmap style(android.content.Context context, Bitmap source, IconStyle style) {
+        if (!style.fillBackground || style.fillColor != 0)
+            return style(source, style.roundness, style.fillBackground ? style.fillColor : Color.TRANSPARENT);
+        int width = source.getWidth(), height = source.getHeight();
+        int[] pixels = new int[width * height];
+        source.getPixels(pixels, 0, width, 0, 0, width, height);
+        IconBackground.Model model = IconBackground.analyze(pixels, width, height);
+        if (model.kind == IconBackground.Kind.EMPTY)
+            return clip(source, style.roundness);
+        int fallback = context.getColor(R.color.widget_icon_background);
+        if (model.kind == IconBackground.Kind.SOLID || model.kind == IconBackground.Kind.FALLBACK)
+            return style(source, style.roundness, model.colorAt(0, 0, fallback));
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                pixels[y * width + x] = model.colorAt(x, y, fallback);
+        Bitmap background = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        background.setPixels(pixels, 0, width, 0, 0, width, height);
+        // Composite before clipping. Opaque artwork stays byte-identical; only
+        // transparent/antialiased edges blend with the inferred background.
+        new Canvas(background).drawBitmap(source, 0, 0, null);
+        Bitmap result = clip(background, style.roundness);
+        if (result != background)
+            background.recycle();
+        return result;
+    }
+
     static Bitmap style(Bitmap source, int roundness, int background) {
         if (roundness <= 0 && background == Color.TRANSPARENT)
             return source;

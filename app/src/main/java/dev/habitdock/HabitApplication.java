@@ -14,7 +14,7 @@ public final class HabitApplication extends Application {
         super.onConfigurationChanged(config);
         Repository.WORK.execute(() -> {
             try {
-                HabitWidget.update(this, false);
+                HabitWidget.repaint(this);
             } catch (RuntimeException ignored) {
             }
         });

@@ -10,3 +10,5 @@ mkdir -p build/predictor-tests
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests PredictorTest
 "${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/AppCatalog.java app/src/main/java/dev/habitdock/WidgetSizing.java tests/PickerLayoutTest.java
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests PickerLayoutTest
+"${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/IconBackground.java tests/IconBackgroundTest.java
+"${JAVA_HOME:+$JAVA_HOME/bin/}java" -Djava.awt.headless=true -cp build/predictor-tests IconBackgroundTest

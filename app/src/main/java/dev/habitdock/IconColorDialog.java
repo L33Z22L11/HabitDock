@@ -9,7 +9,9 @@ import android.widget.*;
 import java.util.Locale;
 import java.util.function.IntConsumer;
 
-/** Native RGB/hex picker. Zero is reserved for the theme-following option. */
+/**
+ * Native RGB/hex picker. Zero is reserved for per-icon adaptive edge colors.
+ */
 final class IconColorDialog {
     static void show(Activity activity, int selected, IntConsumer result) {
         LinearLayout body = Ui.column(activity);
@@ -31,9 +33,10 @@ final class IconColorDialog {
         hex.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                 | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         body.addView(hex, new LinearLayout.LayoutParams(-1, Ui.dp(activity, 48)));
-        int initial = selected == 0 ? activity.getColor(R.color.widget_icon_background) : selected;
+        int initial = selected == 0 ? 0xfff5f6f5 : selected;
         int[] color = {initial};
         boolean[] binding = {false};
+        boolean[] edited = {false};
         SeekBar[] channels = new SeekBar[3];
         TextView[] labels = new TextView[3];
         String[] names = {"红", "绿", "蓝"};
@@ -71,6 +74,8 @@ final class IconColorDialog {
                     int shift = 16 - index * 8;
                     color[0] = (color[0] & ~(255 << shift)) | (value << shift);
                     update.run();
+                    edited[0] = true;
+                    result.accept(color[0]);
                 }
 
                 public void onStartTrackingTouch(SeekBar v) {
@@ -98,6 +103,8 @@ final class IconColorDialog {
             target.setOnClickListener(v -> {
                 color[0] = preset;
                 update.run();
+                edited[0] = true;
+                result.accept(color[0]);
             });
         }
         update.run();
@@ -115,6 +122,8 @@ final class IconColorDialog {
                     update.run();
                     hex.setSelection(Math.min(hex.length(), Math.max(0, cursor)));
                     hex.setError(null);
+                    edited[0] = true;
+                    result.accept(color[0]);
                 }
             }
 
@@ -122,8 +131,9 @@ final class IconColorDialog {
             }
         });
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("图标背景色").setView(scroll)
-                .setNegativeButton("取消", null)
-                .setNeutralButton("跟随系统", (d, w) -> result.accept(0)).setPositiveButton("应用", null).create();
+                .setNegativeButton("取消", (d, w) -> result.accept(selected))
+                .setNeutralButton("自适应颜色", (d, w) -> result.accept(0)).setPositiveButton("完成", null).create();
+        dialog.setOnCancelListener(d -> result.accept(selected));
         dialog.setOnShowListener(d -> {
             dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
                     | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -132,7 +142,7 @@ final class IconColorDialog {
                     hex.setError("请输入 6 位颜色，例如 #DCE8FF");
                     return;
                 }
-                result.accept(color[0]);
+                result.accept(selected == 0 && !edited[0] ? 0 : color[0]);
                 dialog.dismiss();
             });
         });

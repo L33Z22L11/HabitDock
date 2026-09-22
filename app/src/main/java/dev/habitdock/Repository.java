@@ -157,6 +157,7 @@ final class Repository {
                 days.add(
                         java.time.Instant.ofEpochMilli(e.time).atZone(ZoneId.systemDefault()).toLocalDate().toString());
             }
-        return new Snapshot(apps, predictions, count, days.size(), permitted);
+        return new Snapshot(apps, RecommendationLimit.apply(predictions, pinned, RecommendationLimit.load(c)),
+                count, days.size(), permitted);
     }
 }

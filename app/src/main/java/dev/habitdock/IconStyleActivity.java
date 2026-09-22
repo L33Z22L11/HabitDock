@@ -9,7 +9,10 @@ import android.view.*;
 import android.widget.*;
 import java.util.Locale;
 
-/** Global appearance editor; changes remain a draft until saved. */
+/**
+ * Global appearance editor with immediate persistence and a session restore
+ * point.
+ */
 public final class IconStyleActivity extends Activity {
     private SeekBar roundness;
     private Switch fill;
@@ -17,17 +20,23 @@ public final class IconStyleActivity extends Activity {
     private TextView roundnessLabel;
     private int fillColor;
     private Preview preview;
+    private IconStyle original;
+    private ImageButton restore;
+    private boolean binding;
     @Override
     public void onCreate(Bundle state) {
         super.onCreate(state);
         IconStyle style = IconStyle.load(this);
-        if (state != null)
-            style = new IconStyle(state.getInt("roundness"), state.getBoolean("fill"), state.getInt("color"));
+        original = state == null
+                ? style
+                : new IconStyle(state.getInt("original-roundness"),
+                        state.getBoolean("original-fill"), state.getInt("original-color"));
         fillColor = style.fillColor;
         LinearLayout root = Ui.screen(this), bar = Ui.toolbar(this, root, "图标样式", true);
-        ImageButton done = Ui.icon(this, R.drawable.ic_check, "完成", v -> save());
-        done.setTag("icon-style-save");
-        bar.addView(done);
+        restore = Ui.icon(this, R.drawable.ic_undo, "撤销更改",
+                v -> StyleRestore.show(this, "恢复图标样式", () -> bind(original), () -> bind(IconStyle.defaults())));
+        restore.setTag("icon-style-save");
+        bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout body = Ui.column(this);
@@ -36,7 +45,7 @@ public final class IconStyleActivity extends Activity {
         preview = new Preview(this);
         body.addView(preview, new LinearLayout.LayoutParams(-1, Ui.dp(this, 104)));
         Ui.space(body, 12);
-        body.addView(Ui.text(this, "推荐、应用选择器与所有桌面组件共用。", 12, R.color.muted));
+        body.addView(Ui.text(this, "调整立即生效，推荐、应用选择器与所有桌面组件共用。", 12, R.color.muted));
         Ui.space(body, 24);
         roundnessLabel = Ui.text(this, "", 14, R.color.ink);
         body.addView(roundnessLabel);
@@ -72,7 +81,7 @@ public final class IconStyleActivity extends Activity {
         label.setOnClickListener(v -> fill.toggle());
         row.addView(fill, new LinearLayout.LayoutParams(-2, Ui.dp(this, 48)));
         body.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(Ui.text(this, "仅填充透明区域。点按色点自选颜色，半黑半白表示跟随系统。", 12, R.color.muted));
+        body.addView(Ui.text(this, "仅填充透明区域。自适应颜色沿边缘延续渐变，复杂图标使用系统深浅底色；也可点按自选颜色。", 12, R.color.muted));
         fill.setOnCheckedChangeListener((v, checked) -> changed());
         roundness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar s, int value, boolean user) {
@@ -93,48 +102,46 @@ public final class IconStyleActivity extends Activity {
     }
 
     private void changed() {
+        if (binding)
+            return;
         IconStyle style = input();
+        if (!style.sameAs(IconStyle.load(this))) {
+            style.save(this);
+            WidgetAppearance.request(this);
+        }
+        StyleRestore.update(restore, !style.sameAs(original));
         roundnessLabel.setText(getString(R.string.widget_roundness, style.roundness));
         color.setImageDrawable(new ColorChip(fillColor, getColor(R.color.muted), Ui.dp(this, 24)));
         color.setEnabled(style.fillBackground);
         color.setAlpha(style.fillBackground ? 1f : .4f);
         String description = fillColor == 0
-                ? "图标背景色，跟随系统"
+                ? "图标背景色，自适应颜色"
                 : String.format(Locale.ROOT, "图标背景色，#%06X", fillColor & 0xffffff);
         color.setContentDescription(description);
         color.setTooltipText(description);
         preview.setStyle(style);
     }
 
-    private void save() {
-        input().save(this);
-        View done = getWindow().getDecorView().findViewWithTag("icon-style-save");
-        done.setEnabled(false);
-        Context app = getApplicationContext();
-        Repository.WORK.execute(() -> {
-            try {
-                HabitWidget.update(app, false);
-                runOnUiThread(() -> {
-                    if (!isDestroyed())
-                        finish();
-                });
-            } catch (RuntimeException e) {
-                runOnUiThread(() -> {
-                    if (!isDestroyed()) {
-                        done.setEnabled(true);
-                        Ui.toast(this, "更新失败，请重试");
-                    }
-                });
-            }
-        });
+    private void bind(IconStyle style) {
+        binding = true;
+        fillColor = style.fillColor;
+        roundness.setProgress(style.roundness);
+        fill.setChecked(style.fillBackground);
+        binding = false;
+        changed();
+    }
+
+    @Override
+    protected void onStop() {
+        WidgetAppearance.flush();
+        super.onStop();
     }
 
     @Override
     protected void onSaveInstanceState(Bundle out) {
-        IconStyle style = input();
-        out.putInt("roundness", style.roundness);
-        out.putBoolean("fill", style.fillBackground);
-        out.putInt("color", style.fillColor);
+        out.putInt("original-roundness", original.roundness);
+        out.putBoolean("original-fill", original.fillBackground);
+        out.putInt("original-color", original.fillColor);
         super.onSaveInstanceState(out);
     }
     private static final class ColorChip extends Drawable {
@@ -153,11 +160,15 @@ public final class IconStyleActivity extends Activity {
                     cy = b.exactCenterY();
             RectF circle = new RectF(cx - radius, cy - radius, cx + radius, cy + radius);
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(color == 0 ? Color.WHITE : color);
-            canvas.drawOval(circle, paint);
             if (color == 0) {
-                paint.setColor(Color.BLACK);
-                canvas.drawArc(circle, 90, 180, true, paint);
+                int[] colors = {0xff5681c7, 0xff3a8872, 0xffcf8653};
+                for (int i = 0; i < colors.length; i++) {
+                    paint.setColor(colors[i]);
+                    canvas.drawArc(circle, -90 + i * 120, 120, true, paint);
+                }
+            } else {
+                paint.setColor(color);
+                canvas.drawOval(circle, paint);
             }
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(Math.max(1, size / 24));
@@ -203,12 +214,18 @@ public final class IconStyleActivity extends Activity {
                 Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(bitmap);
                 paint.setColor(colors[i]);
+                if (i == 1)
+                    paint.setShader(
+                            new LinearGradient(16, 16, 112, 112, 0xff559bc9, 0xff7152b8, Shader.TileMode.CLAMP));
+                else if (i == 2)
+                    paint.setShader(new LinearGradient(0, 18, 0, 110, 0xffeab569, 0xffbb6658, Shader.TileMode.CLAMP));
                 if (i == 0)
                     canvas.drawRect(0, 0, 128, 128, paint);
                 else if (i == 1)
                     canvas.drawCircle(64, 64, 54, paint);
                 else
                     canvas.drawRoundRect(12, 18, 116, 110, 18, 18, paint);
+                paint.setShader(null);
                 paint.setColor(Color.WHITE);
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(7);
@@ -232,7 +249,7 @@ public final class IconStyleActivity extends Activity {
 
         void setStyle(IconStyle style) {
             for (int i = 0; i < 3; i++)
-                icons[i] = WidgetIcons.style(sources[i], style.roundness, style.backgroundColor(getContext()));
+                icons[i] = WidgetIcons.style(getContext(), sources[i], style);
             invalidate();
         }
 

@@ -1,8 +1,8 @@
 <resources>
+    <color name="widget_icon_background">#252B29</color>
     <color name="page">#101615</color><color name="surface">#1B2421</color>
     <color name="ink">#EEF4F0</color><color name="muted">#A1B3AA</color>
     <color name="accent">#9ADBC1</color><color name="soft">#283D33</color>
     <color name="stroke">#34433B</color><color name="widget_tint">#55000000</color>
     <color name="widget_stroke">#20FFFFFF</color><color name="widget_ink">#F3F5F4</color>
-    <color name="widget_icon_background">#252B29</color>
 </resources>

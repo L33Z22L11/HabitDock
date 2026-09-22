@@ -224,6 +224,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        ApkShare.cleanupAsync(this);
         RefreshJob.schedule(this);
         if (currentPage == 0) {
             refresh(false);
@@ -277,6 +278,8 @@ public final class MainActivity extends Activity {
                     if (isDestroyed())
                         return;
                     lastData = data;
+                    if (currentPage == 2 && settings != null)
+                        settings.refresh(data);
                     if (request != generation || currentPage != 0)
                         return;
                     permissionRow.setVisibility(data.permitted ? View.GONE : View.VISIBLE);

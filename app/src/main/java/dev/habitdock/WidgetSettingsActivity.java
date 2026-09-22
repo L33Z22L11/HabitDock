@@ -10,13 +10,14 @@ import android.widget.*;
 import java.util.*;
 
 public final class WidgetSettingsActivity extends Activity {
-    private final Map<Integer, WidgetPreferences> drafts = new HashMap<>();
+    private final Map<Integer, WidgetPreferences> originals = new HashMap<>();
     private int selectedId = AppWidgetManager.INVALID_APPWIDGET_ID;
     private Spinner columns, rows;
     private SeekBar scale;
     private Switch more, moreTime, actions;
     private TextView scaleLabel, capacity;
     private Preview preview;
+    private ImageButton restore;
     private boolean binding, configuring;
     @Override
     public void onCreate(Bundle state) {
@@ -34,10 +35,10 @@ public final class WidgetSettingsActivity extends Activity {
             }
         }
         if (state != null) {
-            int[] saved = state.getIntArray("drafts-v5");
+            int[] saved = state.getIntArray("original-layouts");
             if (saved != null)
                 for (int i = 0; i + 6 < saved.length; i += 7)
-                    drafts.put(saved[i], new WidgetPreferences(saved[i + 1], saved[i + 2], saved[i + 3],
+                    originals.put(saved[i], new WidgetPreferences(saved[i + 1], saved[i + 2], saved[i + 3],
                             saved[i + 4] != 0, saved[i + 5] != 0, saved[i + 6] != 0));
         }
         int[] active = manager.getAppWidgetIds(new ComponentName(this, HabitWidget.class));
@@ -45,12 +46,24 @@ public final class WidgetSettingsActivity extends Activity {
         int[] ids = configuring ? new int[]{requested} : Arrays.copyOf(active, active.length + 1);
         if (!configuring)
             ids[active.length] = AppWidgetManager.INVALID_APPWIDGET_ID;
+        // Freeze existing widgets before changing defaults for future widgets.
+        for (int id : active)
+            WidgetPreferences.ensure(this, id);
+        for (int id : ids)
+            originals.putIfAbsent(id, WidgetPreferences.load(this, id));
         selectedId = state == null ? ids[0] : state.getInt("selected", ids[0]);
+        boolean validSelection = false;
+        for (int id : ids)
+            validSelection |= id == selectedId;
+        if (!validSelection)
+            selectedId = ids[0];
         LinearLayout root = Ui.screen(this);
         LinearLayout bar = Ui.toolbar(this, root, "组件布局", true);
-        ImageButton done = Ui.icon(this, R.drawable.ic_check, "完成", v -> save());
-        done.setTag("widget-save");
-        bar.addView(done);
+        restore = Ui.icon(this, R.drawable.ic_undo, "撤销更改",
+                v -> StyleRestore.show(this, "恢复当前组件布局", () -> bind(originals.get(selectedId)),
+                        () -> bind(WidgetPreferences.defaults())));
+        restore.setTag("widget-save");
+        bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout body = Ui.column(this);
@@ -72,7 +85,6 @@ public final class WidgetSettingsActivity extends Activity {
             target.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 public void onItemSelected(AdapterView<?> p, View v, int position, long id) {
                     if (columns != null) {
-                        capture();
                         selectedId = ids[position];
                         load();
                     }
@@ -87,6 +99,7 @@ public final class WidgetSettingsActivity extends Activity {
         capacity = Ui.text(this, "", 12, R.color.muted);
         capacity.setGravity(Gravity.CENTER);
         body.addView(capacity);
+        body.addView(Ui.text(this, "调整立即生效，返回即可。撤销仅恢复当前选中的布局。", 12, R.color.muted));
         Ui.space(body, 16);
         LinearLayout grid = new LinearLayout(this);
         LinearLayout col = Ui.column(this), row = Ui.column(this);
@@ -160,14 +173,19 @@ public final class WidgetSettingsActivity extends Activity {
         };
         scale.setOnSeekBarChangeListener(seekListener);
         load();
+        if (configuring) {
+            // No separate save step: returning also completes launcher configuration.
+            setResult(RESULT_OK, new Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, selectedId));
+            WidgetAppearance.request(this);
+            RefreshJob.schedule(this);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if (preview != null) {
-            preview.style = IconStyle.load(this);
-            preview.invalidate();
+            preview.setStyle(IconStyle.load(this));
         }
     }
 
@@ -184,16 +202,12 @@ public final class WidgetSettingsActivity extends Activity {
                 scale.getProgress(), more.isChecked(), actions.isChecked(), moreTime.isChecked());
     }
 
-    private void capture() {
-        if (columns != null && !binding)
-            drafts.put(selectedId, input());
+    private void load() {
+        bind(WidgetPreferences.load(this, selectedId));
     }
 
-    private void load() {
+    private void bind(WidgetPreferences p) {
         binding = true;
-        WidgetPreferences p = drafts.containsKey(selectedId)
-                ? drafts.get(selectedId)
-                : WidgetPreferences.load(this, selectedId);
         columns.setSelection(p.columns - 2);
         rows.setSelection(p.rows - 1);
         scale.setProgress(p.percent);
@@ -207,8 +221,12 @@ public final class WidgetSettingsActivity extends Activity {
     private void changed() {
         if (binding || actions == null)
             return;
-        capture();
         WidgetPreferences p = input();
+        if (!p.sameAs(WidgetPreferences.load(this, selectedId))) {
+            p.save(this, selectedId);
+            WidgetAppearance.request(this);
+        }
+        StyleRestore.update(restore, !p.sameAs(originals.get(selectedId)));
         scaleLabel.setText(getString(R.string.widget_scale, p.percent));
         capacity.setText(getString(R.string.widget_capacity, p.columns, p.rows, p.capacity(), p.more ? " + 更多" : ""));
         moreTime.setEnabled(p.more);
@@ -217,46 +235,18 @@ public final class WidgetSettingsActivity extends Activity {
         preview.invalidate();
     }
 
-    private void save() {
-        capture();
-        for (int id : getSystemService(AppWidgetManager.class)
-                .getAppWidgetIds(new ComponentName(this, HabitWidget.class)))
-            WidgetPreferences.ensure(this, id);
-        for (Map.Entry<Integer, WidgetPreferences> draft : drafts.entrySet())
-            draft.getValue().save(this, draft.getKey());
-        View done = getWindow().getDecorView().findViewWithTag("widget-save");
-        done.setEnabled(false);
-        Context app = getApplicationContext();
-        Repository.WORK.execute(() -> {
-            try {
-                HabitWidget.update(app, false);
-                RefreshJob.schedule(app);
-                runOnUiThread(() -> {
-                    if (!isDestroyed()) {
-                        if (configuring)
-                            setResult(RESULT_OK,
-                                    new Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, selectedId));
-                        finish();
-                    }
-                });
-            } catch (RuntimeException e) {
-                runOnUiThread(() -> {
-                    if (!isDestroyed()) {
-                        done.setEnabled(true);
-                        Ui.toast(this, "更新失败，请重试");
-                    }
-                });
-            }
-        });
+    @Override
+    protected void onStop() {
+        WidgetAppearance.flush();
+        super.onStop();
     }
 
     @Override
     protected void onSaveInstanceState(Bundle out) {
-        capture();
         out.putInt("selected", selectedId);
-        int[] saved = new int[drafts.size() * 7];
+        int[] saved = new int[originals.size() * 7];
         int i = 0;
-        for (Map.Entry<Integer, WidgetPreferences> e : drafts.entrySet()) {
+        for (Map.Entry<Integer, WidgetPreferences> e : originals.entrySet()) {
             saved[i++] = e.getKey();
             saved[i++] = e.getValue().columns;
             saved[i++] = e.getValue().rows;
@@ -265,17 +255,33 @@ public final class WidgetSettingsActivity extends Activity {
             saved[i++] = e.getValue().actions ? 1 : 0;
             saved[i++] = e.getValue().moreTime ? 1 : 0;
         }
-        out.putIntArray("drafts-v5", saved);
+        out.putIntArray("original-layouts", saved);
         super.onSaveInstanceState(out);
     }
     private static final class Preview extends View {
         WidgetPreferences layout = new WidgetPreferences(5, 2, 82, true);
-        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        IconStyle style;
+        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        final Bitmap[] sources = new Bitmap[3], icons = new Bitmap[3];
+        final RectF destination = new RectF();
         Preview(Context c) {
             super(c);
-            style = IconStyle.load(c);
             setContentDescription("组件布局预览");
+            int[] colors = {0xff3a8872, 0xff5681c7, 0xffcf8653};
+            for (int i = 0; i < sources.length; i++) {
+                sources[i] = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(sources[i]);
+                paint.setColor(colors[i]);
+                canvas.drawCircle(64, 64, 54, paint);
+                paint.setColor(Color.WHITE);
+                canvas.drawCircle(64, 64, 18, paint);
+            }
+            setStyle(IconStyle.load(c));
+        }
+
+        void setStyle(IconStyle style) {
+            for (int i = 0; i < sources.length; i++)
+                icons[i] = WidgetIcons.style(getContext(), sources[i], style);
+            invalidate();
         }
 
         @Override
@@ -301,15 +307,8 @@ public final class WidgetSettingsActivity extends Activity {
                         paint.setAlpha(255);
                     }
                 } else {
-                    paint.setColor(style.fillBackground
-                            ? style.backgroundColor(getContext())
-                            : getContext().getColor(R.color.accent));
-                    if (!style.fillBackground)
-                        paint.setAlpha(index % 2 == 0 ? 210 : 135);
-                    canvas.drawRoundRect(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2,
-                            side * style.roundness / 200f, side * style.roundness / 200f, paint);
-                    paint.setColor(getContext().getColor(style.fillBackground ? R.color.accent : R.color.surface));
-                    canvas.drawCircle(cx, cy, side * .18f, paint);
+                    destination.set(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2);
+                    canvas.drawBitmap(icons[index % icons.length], null, destination, paint);
                 }
             }
         }

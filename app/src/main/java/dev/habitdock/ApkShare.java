@@ -15,6 +15,23 @@ import java.util.zip.*;
 /** On-demand export only. Never reads another app's user data. */
 final class ApkShare {
     private static final AtomicBoolean BUSY = new AtomicBoolean();
+    private static final AtomicBoolean CLEANING = new AtomicBoolean();
+
+    static void cleanupAsync(Context context) {
+        if (!CLEANING.compareAndSet(false, true))
+            return;
+        Context app = context.getApplicationContext();
+        Repository.WORK.execute(() -> {
+            try {
+                prune(new File(app.getCacheDir(), "shared-apks"), System.currentTimeMillis());
+            } catch (SecurityException ignored) {
+                // Best-effort cache cleanup must not prevent opening the application.
+            } finally {
+                CLEANING.set(false);
+            }
+        });
+    }
+
     static void start(Activity activity, Repository.App app) {
         if (!BUSY.compareAndSet(false, true)) {
             Ui.toast(activity, "正在准备安装包，请稍候");
@@ -30,7 +47,7 @@ final class ApkShare {
                 File folder = new File(context.getCacheDir(), "shared-apks");
                 if (!folder.isDirectory() && !folder.mkdirs())
                     throw new IOException("cache unavailable");
-                prune(folder);
+                prune(folder, System.currentTimeMillis());
                 String safe = (app.label + "_" + String.valueOf(pkg.versionName)).replaceAll("[^\\p{L}\\p{N}._-]", "_");
                 if (safe.length() > 80)
                     safe = safe.substring(0, 80);
@@ -101,11 +118,11 @@ final class ApkShare {
         zip.closeEntry();
     }
 
-    private static void prune(File folder) {
+    static void prune(File folder, long now) {
         File[] files = folder.listFiles();
         if (files != null)
             for (File file : files)
-                if (file.isFile() && file.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000L)
+                if (file.isFile() && file.lastModified() < now - 24 * 60 * 60 * 1000L)
                     file.delete();
     }
 }

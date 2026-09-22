@@ -18,7 +18,7 @@ android {
         targetSdk 35
         versionCode appVersion.getProperty('versionCode').toInteger()
         versionName appVersion.getProperty('versionName')
-        testInstrumentationRunner(project.hasProperty('touchTests') ? 'dev.habitdock.PickerTouchRunner' : 'dev.habitdock.SmokeRunner')
+        testInstrumentationRunner(project.findProperty('testRunner') ?: (project.hasProperty('touchTests') ? 'dev.habitdock.PickerTouchRunner' : 'dev.habitdock.SmokeRunner'))
     }
 
     signingConfigs {
