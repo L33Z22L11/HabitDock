@@ -63,5 +63,5 @@ tasks.configureEach {
 dependencies {
     // FileProvider is pinned to the version compatible with this compile SDK.
     //noinspection GradleDependency
-    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.core:core:1.19.0'
 }
