@@ -22,10 +22,15 @@
         <activity-alias android:name=".SettingsActivity" android:targetActivity=".MainActivity" android:exported="false" />
         <!-- Existing widget PendingIntents from older versions also open the shared screen. -->
         <activity-alias android:name=".MoreActivity" android:targetActivity=".MainActivity" android:exported="false" />
-        <receiver android:name=".HabitWidget" android:exported="false" android:label="知时 · 智能推荐">
+        <receiver android:name=".HabitWidget" android:exported="false" android:label="@string/widget_name">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/habit_widget" />
         </receiver>
+        <receiver android:name=".CompactHabitWidget" android:exported="false" android:label="@string/widget_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/habit_widget_compact" />
+        </receiver>
+        <receiver android:name=".WidgetPinRequest" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

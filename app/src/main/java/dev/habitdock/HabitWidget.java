@@ -12,11 +12,35 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-public final class HabitWidget extends AppWidgetProvider {
+public class HabitWidget extends AppWidgetProvider {
     static final int[] ROWS = {R.id.row1, R.id.row2, R.id.row3, R.id.row4, R.id.row5};
     static final String REFRESH = "dev.habitdock.REFRESH";
     static final String REFRESH_IF_DUE = "dev.habitdock.REFRESH_IF_DUE",
             MANUAL_REFRESH = "dev.habitdock.MANUAL_REFRESH";
+    static ComponentName provider(Context context, boolean compact) {
+        return new ComponentName(context, compact ? CompactHabitWidget.class : HabitWidget.class);
+    }
+
+    static boolean owns(Context context, ComponentName component) {
+        for (WidgetSizes.Size size : WidgetSizes.ALL)
+            if (new ComponentName(context, size.receiver).equals(component))
+                return true;
+        return false;
+    }
+
+    static int[] ids(Context context) {
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        List<Integer> active = new ArrayList<>();
+        for (WidgetSizes.Size size : WidgetSizes.ALL)
+            for (int id : manager.getAppWidgetIds(new ComponentName(context, size.receiver)))
+                active.add(id);
+        Collections.sort(active);
+        int[] ids = new int[active.size()];
+        for (int i = 0; i < ids.length; i++)
+            ids[i] = active.get(i);
+        return ids;
+    }
+
     static void refreshIfDue(Context c) {
         long rendered = c.getSharedPreferences("widget_runtime", Context.MODE_PRIVATE).getLong("last_success", 0);
         if (RefreshPolicy.due(c, System.currentTimeMillis()) || rendered != RefreshPolicy.last(c))
@@ -29,7 +53,8 @@ public final class HabitWidget extends AppWidgetProvider {
         String action = intent.getAction();
         if (REFRESH.equals(action) || REFRESH_IF_DUE.equals(action) || MANUAL_REFRESH.equals(action)
                 || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action)
-                || AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED.equals(action)) {
+                || AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED.equals(action)
+                || AppWidgetManager.ACTION_APPWIDGET_DELETED.equals(action)) {
             RefreshJob.schedule(context);
             PendingResult pending = goAsync();
             Context app = context.getApplicationContext();
@@ -39,7 +64,9 @@ public final class HabitWidget extends AppWidgetProvider {
                 try {
                     // Check on the serial worker: consecutive clicks see the previous successful
                     // update.
-                    if (REFRESH_IF_DUE.equals(action) || MANUAL_REFRESH.equals(action))
+                    if (AppWidgetManager.ACTION_APPWIDGET_DELETED.equals(action))
+                        repaint(app);
+                    else if (REFRESH_IF_DUE.equals(action) || MANUAL_REFRESH.equals(action))
                         refreshIfDue(app);
                     else
                         update(app, false);
@@ -96,7 +123,7 @@ public final class HabitWidget extends AppWidgetProvider {
         views.setTextViewText(R.id.empty, text);
         for (int row : ROWS)
             views.setViewVisibility(row, View.GONE);
-        AppWidgetManager.getInstance(c).updateAppWidget(new ComponentName(c, HabitWidget.class), views);
+        AppWidgetManager.getInstance(c).updateAppWidget(ids(c), views);
     }
 
     static void update(Context c, boolean force) {
@@ -109,7 +136,7 @@ public final class HabitWidget extends AppWidgetProvider {
 
     private static void update(Context c, boolean force, boolean appearanceOnly) {
         AppWidgetManager manager = AppWidgetManager.getInstance(c);
-        int[] ids = manager.getAppWidgetIds(new ComponentName(c, HabitWidget.class));
+        int[] ids = ids(c);
         if (ids.length == 0)
             return;
         int version;
@@ -126,14 +153,19 @@ public final class HabitWidget extends AppWidgetProvider {
         int max = 0;
         for (int id : ids) {
             WidgetPreferences.ensure(c, id);
-            max = Math.max(max, WidgetPreferences.load(c, id).capacity());
+            max += WidgetPreferences.load(c, id).capacity();
         }
         Map<String, Bitmap> icons = new HashMap<>();
+        List<Predictor.Prediction> eligible = new ArrayList<>();
         for (Predictor.Prediction p : data.predictions) {
             if (icons.size() == max)
                 break;
             try {
+                if (icons.containsKey(p.pkg) || !data.apps.containsKey(p.pkg)
+                        || c.getPackageManager().getLaunchIntentForPackage(p.pkg) == null)
+                    continue;
                 icons.put(p.pkg, WidgetIcons.source(c.getPackageManager().getApplicationIcon(p.pkg)));
+                eligible.add(p);
             } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
             }
         }
@@ -141,13 +173,22 @@ public final class HabitWidget extends AppWidgetProvider {
         Map<String, Bitmap> shaped = new HashMap<>();
         for (Map.Entry<String, Bitmap> icon : icons.entrySet())
             shaped.put(icon.getKey(), WidgetIcons.style(c, icon.getValue(), style));
+        Map<Integer, Map<String, Bitmap>> scaled = new HashMap<>();
         boolean published = false;
         String stamp = current.stamp == 0
                 ? ""
                 : Instant.ofEpochMilli(current.stamp).atZone(ZoneId.systemDefault())
                         .format(DateTimeFormatter.ofPattern("HH:mm"));
+        int offset = 0;
         for (int id : ids) {
             WidgetPreferences layout = WidgetPreferences.load(c, id);
+            List<Predictor.Prediction> page = WidgetAllocation.page(eligible, offset, layout.capacity());
+            offset += page.size();
+            Repository.Snapshot portion = new Repository.Snapshot(data.apps, page, data.samples, data.days,
+                    data.permitted);
+            boolean exhausted = !eligible.isEmpty() && page.isEmpty();
+            Map<String, Bitmap> fitted = scaled.computeIfAbsent(layout.percent,
+                    percent -> WidgetIcons.inset(shaped, percent));
             Bundle options = manager.getAppWidgetOptions(id);
             float width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 320);
             float height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 120);
@@ -161,13 +202,14 @@ public final class HabitWidget extends AppWidgetProvider {
                             break;
                         if (size.getWidth() > 0 && size.getHeight() > 0)
                             layouts.put(size,
-                                    render(c, data, shaped, stamp, size.getWidth(), size.getHeight(), layout, id));
+                                    renderFitted(c, portion, fitted, stamp, size.getWidth(), size.getHeight(), layout,
+                                            id, exhausted));
                     }
                 views = layouts.isEmpty()
-                        ? render(c, data, shaped, stamp, width, height, layout, id)
+                        ? renderFitted(c, portion, fitted, stamp, width, height, layout, id, exhausted)
                         : new RemoteViews(layouts);
             } else
-                views = render(c, data, shaped, stamp, width, height, layout, id);
+                views = renderFitted(c, portion, fitted, stamp, width, height, layout, id, exhausted);
             synchronized (Repository.PRIVACY_LOCK) {
                 if (version == Repository.privacyVersion) {
                     manager.updateAppWidget(id, views);
@@ -194,6 +236,12 @@ public final class HabitWidget extends AppWidgetProvider {
 
     static RemoteViews render(Context c, Repository.Snapshot data, Map<String, Bitmap> icons, String stamp, float width,
             float height, WidgetPreferences layout, int widgetId) {
+        return renderFitted(c, data, WidgetIcons.inset(icons, layout.percent), stamp, width, height, layout, widgetId,
+                false);
+    }
+
+    private static RemoteViews renderFitted(Context c, Repository.Snapshot data, Map<String, Bitmap> icons,
+            String stamp, float width, float height, WidgetPreferences layout, int widgetId, boolean exhausted) {
         RemoteViews views = base(c);
         float iconSize = WidgetSizing.iconDp(width, height, layout.columns, layout.rows, layout.percent);
         int index = 0;
@@ -208,14 +256,9 @@ public final class HabitWidget extends AppWidgetProvider {
             if (icon == null || launch == null)
                 continue;
             RemoteViews cell = new RemoteViews(c.getPackageName(), R.layout.widget_app);
+            // fitCenter uses the actual host cell. Percentage lives in transparent
+            // bitmap margins, not fixed dp inferred from sometimes-inaccurate options.
             cell.setImageViewBitmap(R.id.app_icon, icon);
-            if (Build.VERSION.SDK_INT >= 31) {
-                cell.setViewLayoutWidth(R.id.app_icon, iconSize, TypedValue.COMPLEX_UNIT_DIP);
-                cell.setViewLayoutHeight(R.id.app_icon, iconSize, TypedValue.COMPLEX_UNIT_DIP);
-            } else {
-                int x = Ui.dp(c, (cellWidth - iconSize) / 2), y = Ui.dp(c, (cellHeight - iconSize) / 2);
-                cell.setViewPadding(R.id.app_icon, x, y, x, y);
-            }
             if (layout.actions)
                 launch = MainActivity.actionIntent(c, p.pkg, widgetId);
             cell.setContentDescription(R.id.app_cell,
@@ -225,7 +268,7 @@ public final class HabitWidget extends AppWidgetProvider {
             views.addView(ROWS[index / layout.columns], cell);
             index++;
         }
-        if (index == 0) {
+        if (index == 0 && !exhausted) {
             for (int row : ROWS)
                 views.setViewVisibility(row, View.GONE);
             views.setViewVisibility(R.id.empty, View.VISIBLE);

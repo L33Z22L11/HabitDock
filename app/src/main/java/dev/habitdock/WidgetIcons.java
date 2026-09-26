@@ -2,6 +2,7 @@ package dev.habitdock;
 
 import android.graphics.*;
 import android.graphics.drawable.*;
+import java.util.*;
 
 final class WidgetIcons {
     static Bitmap source(Drawable drawable) {
@@ -19,6 +20,25 @@ final class WidgetIcons {
         } else
             drawable.draw(canvas);
         return bitmap;
+    }
+
+    static Map<String, Bitmap> inset(Map<String, Bitmap> icons, int percent) {
+        Map<String, Bitmap> result = new HashMap<>();
+        for (Map.Entry<String, Bitmap> icon : icons.entrySet())
+            result.put(icon.getKey(), inset(icon.getValue(), percent));
+        return result;
+    }
+
+    static Bitmap inset(Bitmap source, int percent) {
+        int edge = Math.max(source.getWidth(), source.getHeight());
+        int size = Math.round(edge * 100f / Math.max(50, Math.min(100, percent)));
+        if (size == source.getWidth() && size == source.getHeight())
+            return source;
+        Bitmap result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        result.setDensity(source.getDensity());
+        new Canvas(result).drawBitmap(source, (size - source.getWidth()) / 2f,
+                (size - source.getHeight()) / 2f, new Paint(Paint.FILTER_BITMAP_FLAG));
+        return result;
     }
 
     static Bitmap clip(Bitmap source, int roundness) {

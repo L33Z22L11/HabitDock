@@ -32,8 +32,8 @@ keytool -genkeypair -keystore habitdock-release.keystore -alias habitdock \
 3. 创建并推送对应的 Tag：
 
 ```sh
-git tag -a v0.4.6 -m 'HabitDock 0.4.5'
-git push origin v0.4.6
+git tag -a v0.4.7 -m 'HabitDock 0.4.7'
+git push origin v0.4.7
 ```
 
 工作流只在推送 `v*` Tag 时发布，Tag 必须与该提交中的版本号一致。支持 `v0.5.0-beta.1` 一类预发布版本，需要把 `versionName` 写成 `0.5.0-beta.1`，同时递增 `versionCode`。
@@ -48,9 +48,9 @@ git push origin v0.4.6
 
 ```sh
 ./gradlew assembleRelease lintRelease
-python3 scripts/release.py validate v0.4.6
+python3 scripts/release.py validate v0.4.7
 "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk
-python3 scripts/release.py package v0.4.6
+python3 scripts/release.py package v0.4.7
 ```
 
-输出位于 `dist/HabitDock-0.4.5.apk` 与 `dist/SHA256SUMS`。未设置完整签名配置的 release 构建会失败；debug 构建仍可直接运行。不要把发布密钥用于不可信 PR 的构建。
+输出位于 `dist/HabitDock-0.4.7.apk` 与 `dist/SHA256SUMS`。未设置完整签名配置的 release 构建会失败；debug 构建仍可直接运行。不要把发布密钥用于不可信 PR 的构建。

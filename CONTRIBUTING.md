@@ -36,6 +36,8 @@ adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-a
 adb -s <emulator> shell am instrument -w dev.habitdock.test/dev.habitdock.SettingsPageRunner
 ```
 
+WidgetSizingRunner 可通过 `-PtestRunner=dev.habitdock.WidgetSizingRunner` 构建测试包，验证图标在实际容器内的居中与相对缩放。WidgetDiagnosticRunner 只读输出桌面上报尺寸，不改动偏好或绑定。
+
 SmokeRunner 的无组件任务检查需要先移除测试模拟器上的知时 Widget。普通 GitHub CI 编译 Android 测试包，执行纯 JVM 与 Python 检查；设备测试在模拟器上另外执行。
 
 SettingsPageRunner 检查上限输入与保存、更新弹窗和外链目标，默认使用本地版本响应。需要额外验证真实 GitHub HTTPS 查询时，在 `am instrument` 后添加 `-e checkNetwork true`；不要让网络可用性成为离线回归检查的前提。

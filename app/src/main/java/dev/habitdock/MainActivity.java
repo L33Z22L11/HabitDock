@@ -135,7 +135,7 @@ public final class MainActivity extends Activity {
             settings.setVisibility(page == 2 ? View.VISIBLE : View.GONE);
         back.setVisibility(page == 0 ? View.GONE : View.VISIBLE);
         title.setPadding(Ui.dp(this, page == 0 ? 12 : 0), 0, 0, 0);
-        title.setText(page == 0 ? "推荐" : page == 1 ? "不推荐的应用" : "设置");
+        title.setText(page == 0 ? getString(R.string.app_name) : page == 1 ? "不推荐的应用" : "设置");
         time.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
         actions.removeAllViews();
         if (page == 0) {
@@ -322,16 +322,17 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void addWidget() {
-        AppWidgetManager manager = getSystemService(AppWidgetManager.class);
-        if (manager.isRequestPinAppWidgetSupported()) {
-            try {
-                manager.requestPinAppWidget(new ComponentName(this, HabitWidget.class), null, null);
+    private void addWidget(int columns) {
+        try {
+            if (WidgetPinRequest.request(this, columns, 2,
+                    WidgetPreferences.load(this, WidgetPreferences.defaultId(columns)), ""))
                 return;
-            } catch (RuntimeException ignored) {
-            }
+        } catch (RuntimeException error) {
+            Ui.toast(this, "暂时无法添加组件，请重试");
+            return;
         }
-        new AlertDialog.Builder(this).setTitle("添加知时组件").setMessage("长按桌面空白处 → 小组件 → 知时 · 智能推荐。可调整桌面占位，内部行列在组件布局中设置。")
+        new AlertDialog.Builder(this).setTitle("请从桌面添加")
+                .setMessage("当前桌面不支持应用内添加。请长按桌面空白处，在小组件列表选择知时。")
                 .setPositiveButton("知道了", null).show();
     }
 

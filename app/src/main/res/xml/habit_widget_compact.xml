@@ -1,10 +1,8 @@
-<!-- Use previewImage for picker compatibility: some launchers accept previewLayout
-     but their pin dialog requires a bitmap and fails before creating the widget. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" tools:targetApi="31"
-    android:minWidth="250dp" android:minHeight="110dp" android:minResizeWidth="90dp" android:minResizeHeight="64dp"
-    android:targetCellWidth="4" android:targetCellHeight="2"
+    android:minWidth="110dp" android:minHeight="110dp" android:minResizeWidth="90dp" android:minResizeHeight="64dp"
+    android:targetCellWidth="2" android:targetCellHeight="2"
     android:updatePeriodMillis="0" android:initialLayout="@layout/widget"
     android:configure="dev.habitdock.WidgetSettingsActivity" android:widgetFeatures="reconfigurable|configuration_optional"
     android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen"
-    android:previewImage="@drawable/widget_preview_image"
+    android:previewImage="@drawable/widget_preview_compact"
     android:description="@string/widget_description" />

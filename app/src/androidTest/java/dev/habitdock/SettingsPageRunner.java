@@ -177,7 +177,8 @@ public final class SettingsPageRunner extends Instrumentation {
                     .contentEquals(((android.widget.TextView) view("about-title")).getText()),
                     "about title appends installed version");
             click("open-about");
-            check(node("知时 · HabitDock") != null, "about dialog displays application information");
+            check(node(getTargetContext().getString(R.string.app_name)) != null,
+                    "about dialog displays application information");
             screenshot("about-dialog");
             choose("关闭");
             click("open-repository");

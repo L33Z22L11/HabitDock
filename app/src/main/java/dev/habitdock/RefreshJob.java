@@ -2,14 +2,12 @@ package dev.habitdock;
 
 import android.app.job.*;
 import android.content.*;
-import android.appwidget.AppWidgetManager;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RefreshJob extends JobService {
     private AtomicBoolean stopped;
     static boolean needed(Context c) {
-        return UsageStore.permitted(c) && AppWidgetManager.getInstance(c)
-                .getAppWidgetIds(new ComponentName(c, HabitWidget.class)).length > 0;
+        return UsageStore.permitted(c) && HabitWidget.ids(c).length > 0;
     }
 
     static void schedule(Context c) {

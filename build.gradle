@@ -5,7 +5,7 @@ plugins {
 
 spotless {
     java {
-        target 'app/src/**/*.java', 'tests/**/*.java'
+        target 'app/src/**/*.java', 'tests/**/*.java', 'scripts/*.java'
         eclipse('4.26').configFile('config/eclipse-java.xml')
         trimTrailingWhitespace()
         endWithNewline()

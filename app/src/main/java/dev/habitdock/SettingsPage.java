@@ -10,12 +10,14 @@ import android.view.*;
 import android.widget.*;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntConsumer;
 
 // Constructed programmatically with its host callbacks; never inflated from XML.
 @android.annotation.SuppressLint("ViewConstructor")
 final class SettingsPage extends ScrollView {
     private final Activity activity;
-    private final Runnable addWidget, openExclusions;
+    private final IntConsumer addWidget;
+    private final Runnable openExclusions;
     private final LinearLayout items;
     private static final AtomicBoolean UPDATE_IN_FLIGHT = new AtomicBoolean();
     private Repository.Snapshot lastData;
@@ -24,7 +26,7 @@ final class SettingsPage extends ScrollView {
     private TextView learningDescription;
     private LinearLayout aboutRow;
     private String updateStatus;
-    SettingsPage(Activity activity, Runnable addWidget, Runnable openExclusions) {
+    SettingsPage(Activity activity, IntConsumer addWidget, Runnable openExclusions) {
         super(activity);
         this.activity = activity;
         this.addWidget = addWidget;
@@ -44,10 +46,10 @@ final class SettingsPage extends ScrollView {
                 () -> activity.startActivity(new Intent(activity, AppPickerActivity.class).putExtra("mode", "pinned")));
         row(R.drawable.ic_recommend, "推荐上限", RecommendationLimit.load(activity) + " 个 · 固定应用另计",
                 this::chooseRecommendationLimit).setTag("recommendation-limit");
-        row(R.drawable.ic_add_widget, "添加桌面小组件", "布局可按每个组件单独调整", addWidget);
+        addWidgetRow();
         row(R.drawable.ic_contrast, "图标样式", "圆角与背景填色 · 所有应用图标",
                 () -> activity.startActivity(new Intent(activity, IconStyleActivity.class)));
-        row(R.drawable.ic_recommend, "组件布局", "行列数、图标大小与更多入口",
+        row(R.drawable.ic_recommend, "组件布局", "组件名称、行列数与图标大小",
                 () -> activity.startActivity(new Intent(activity, WidgetSettingsActivity.class)));
         row(R.drawable.ic_refresh, "刷新间隔", intervalLabel(RefreshPolicy.minutes(activity)), this::chooseRefreshInterval);
         Ui.divider(items);
@@ -93,6 +95,33 @@ final class SettingsPage extends ScrollView {
         });
         about.addView(update, new LinearLayout.LayoutParams(-2, Ui.dp(activity, 48)));
         loadLearningStats();
+    }
+
+    private void addWidgetRow() {
+        LinearLayout row = row(R.drawable.ic_add_widget, "添加桌面小组件", "", () -> {
+        });
+        row.setOnClickListener(null);
+        row.setClickable(false);
+        row.setFocusable(false);
+        row.setContentDescription(null);
+        row.setBackground(null);
+        LinearLayout copy = (LinearLayout) row.getChildAt(1);
+        while (copy.getChildCount() > 1)
+            copy.removeViewAt(1);
+        row.removeViewAt(2);
+        for (int columns : new int[]{4, 2}) {
+            Button button = new Button(activity, null, android.R.attr.borderlessButtonStyle);
+            button.setText(columns == 4 ? "4×2" : "2×2");
+            button.setTextSize(14);
+            button.setTextColor(activity.getColor(R.color.accent));
+            button.setMinWidth(0);
+            button.setMinimumWidth(0);
+            button.setPadding(0, 0, 0, 0);
+            button.setTag("add-widget-" + columns + "x2");
+            button.setContentDescription("添加 " + columns + "×2 桌面小组件");
+            button.setOnClickListener(v -> addWidget.accept(columns));
+            row.addView(button, new LinearLayout.LayoutParams(Ui.dp(activity, 52), Ui.dp(activity, 48)));
+        }
     }
 
     private String aboutTitle() {
@@ -153,7 +182,7 @@ final class SettingsPage extends ScrollView {
                 + "\n\n组件按设置间隔更新，系统省电策略可能延迟；打开推荐页或点击更多时，到期才补刷。", 16, R.color.ink));
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(content);
-        new AlertDialog.Builder(activity).setTitle("知时 · HabitDock").setView(scroll)
+        new AlertDialog.Builder(activity).setTitle(R.string.app_name).setView(scroll)
                 .setPositiveButton("关闭", null).show();
     }
 

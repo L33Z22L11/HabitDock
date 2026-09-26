@@ -83,6 +83,12 @@ public final class StyleSettingsRunner extends Instrumentation {
                     if (text.contentEquals(node.getText() == null ? "" : node.getText())
                             || text.contentEquals(
                                     node.getContentDescription() == null ? "" : node.getContentDescription())) {
+                        // Dialog buttons can move while the IME animates. Click the node
+                        // itself when possible instead of using a stale screen position.
+                        if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                            waitForIdleSync();
+                            return;
+                        }
                         node.getBoundsInScreen(bounds);
                         break;
                     }
@@ -92,6 +98,26 @@ public final class StyleSettingsRunner extends Instrumentation {
         if (bounds.isEmpty())
             throw new AssertionError("missing dialog action: " + text);
         tap(bounds.centerX(), bounds.centerY());
+    }
+
+    private void enterWidgetName(String value) throws Exception {
+        tap("widget-name");
+        for (int i = 0; i < 60; i++) {
+            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            if (root != null)
+                for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText("组件名称输入")) {
+                    if (!node.isEditable())
+                        continue;
+                    Bundle args = new Bundle();
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
+                    if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        waitForIdleSync();
+                        return;
+                    }
+                }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("widget name input not editable");
     }
 
     private void progress(String tag, int value) {
@@ -156,8 +182,31 @@ public final class StyleSettingsRunner extends Instrumentation {
             int first = host.allocateAppWidgetId(), second = host.allocateAppWidgetId();
             ComponentName provider = new ComponentName(c, HabitWidget.class);
             check(manager.bindAppWidgetIdIfAllowed(first, provider)
-                    && manager.bindAppWidgetIdIfAllowed(second, provider),
+                    && manager.bindAppWidgetIdIfAllowed(second, HabitWidget.provider(c, true)),
                     "two real widget bindings (grantbind on the emulator before running)");
+            check(WidgetPreferences.load(c, WidgetPreferences.COMPACT_DEFAULT).columns == 3
+                    && WidgetPreferences.load(c, WidgetPreferences.COMPACT_DEFAULT).rows == 3
+                    && WidgetPreferences.load(c, second).columns == 3 && WidgetPreferences.load(c, second).rows == 3,
+                    "compact defaults and a newly bound compact widget use a three by three grid");
+            WidgetPreferences compactDefaults = new WidgetPreferences(2, 4, 73, false);
+            compactDefaults.save(c, WidgetPreferences.COMPACT_DEFAULT);
+            check(WidgetPreferences.load(c, 0).sameAs(WidgetPreferences.defaults())
+                    && WidgetPreferences.load(c, WidgetPreferences.COMPACT_DEFAULT).sameAs(compactDefaults),
+                    "desktop sizes have independent saved defaults");
+            WidgetPreferences.defaults(c, WidgetPreferences.COMPACT_DEFAULT).save(c, WidgetPreferences.COMPACT_DEFAULT);
+            AppWidgetProviderInfo widgetInfo = manager.getAppWidgetInfo(first);
+            check(widgetInfo.previewImage != 0 && widgetInfo.previewLayout == 0,
+                    "widget uses an image preview for launchers whose pin dialog requires a bitmap");
+            check(widgetInfo.targetCellWidth == 4 && widgetInfo.targetCellHeight == 2
+                    && widgetInfo.resizeMode == AppWidgetProviderInfo.RESIZE_BOTH,
+                    "initial desktop span is 4x2 and both resizing directions remain enabled");
+            AppWidgetProviderInfo compactInfo = manager.getAppWidgetInfo(second);
+            check(compactInfo.targetCellWidth == 2 && compactInfo.targetCellHeight == 2
+                    && compactInfo.previewImage != widgetInfo.previewImage && compactInfo.previewLayout == 0
+                    && HabitWidget.ids(c).length == 2,
+                    "compact provider advertises 2x2 and participates in the shared widget list");
+            RemoteViews previewViews = new RemoteViews(c.getPackageName(), R.layout.widget_preview);
+            runOnMainSync(() -> previewViews.apply(c, new FrameLayout(c)));
             AppWidgetHost testHost = host;
             runOnMainSync(() -> {
                 testHost.startListening();
@@ -232,8 +281,29 @@ public final class StyleSettingsRunner extends Instrumentation {
             open(WidgetSettingsActivity.class);
             check(!view("widget-save").isShown() && WidgetPreferences.load(c, first).sameAs(before),
                     "binding widget controls does not modify their saved values");
+            enterWidgetName("  工作  ");
+            choose("保存");
+            check(WidgetNames.get(c, first).equals("工作") && WidgetNames.get(c, second).isEmpty()
+                    && ((Spinner) view("widget-target")).getSelectedItem().equals("工作"),
+                    "renaming is trimmed, per-instance and reflected in the picker: first=" + WidgetNames.get(c, first)
+                            + ", second=" + WidgetNames.get(c, second) + ", selected="
+                            + ((Spinner) view("widget-target")).getSelectedItem());
+            check(WidgetPreferences.load(c, first).sameAs(before) && !view("widget-save").isShown(),
+                    "renaming leaves layout and layout restore state unchanged");
+            recreate();
+            check(((Spinner) view("widget-target")).getSelectedItem().equals("工作"),
+                    "saved widget name survives activity recreation");
+            enterWidgetName("取消的名称");
+            choose("取消");
+            check(WidgetNames.get(c, first).equals("工作"), "cancel does not rename the widget");
+            enterWidgetName("   ");
+            choose("保存");
+            check(WidgetNames.get(c, first).isEmpty()
+                    && ((Spinner) view("widget-target")).getSelectedItem().equals("桌面组件 1"),
+                    "blank name restores the default picker label");
+            WidgetNames.save(c, first, "保留的名称");
             beforeUpdates = updates.get();
-            selection("widget-columns", 2);
+            progress("widget-columns", 4);
             progress("widget-scale", 95);
             runOnMainSync(() -> ((Switch) view("widget-more")).setChecked(true));
             check(WidgetPreferences.load(c, first).columns == 4 && WidgetPreferences.load(c, first).percent == 95
@@ -242,7 +312,8 @@ public final class StyleSettingsRunner extends Instrumentation {
             awaitUpdate(updates, beforeUpdates);
             check(WidgetPreferences.load(c, second).sameAs(other), "editing one widget preserves the second");
             selection("widget-target", 2);
-            selection("widget-columns", 0);
+            check(!view("widget-name").isShown(), "new-widget defaults cannot be named as an instance");
+            progress("widget-columns", 2);
             check(WidgetPreferences.load(c, 0).columns == 2 && WidgetPreferences.load(c, first).columns == 4
                     && WidgetPreferences.load(c, second).sameAs(other),
                     "new-widget defaults do not alter existing widgets");
@@ -266,7 +337,7 @@ public final class StyleSettingsRunner extends Instrumentation {
             choose("恢复上次");
             check(WidgetPreferences.load(c, first).sameAs(before),
                     "restore original still works after restoring defaults");
-            selection("widget-rows", 1);
+            progress("widget-rows", 2);
             close();
             settle();
             open(WidgetSettingsActivity.class);
@@ -275,6 +346,43 @@ public final class StyleSettingsRunner extends Instrumentation {
             settle();
             check(RefreshPolicy.last(c) == stamp, "all edits and restores leave recommendation clock untouched");
             close();
+            current = startActivitySync(new Intent(c, WidgetSettingsActivity.class)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, second).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            waitForIdleSync();
+            check(!current.isFinishing() && view("widget-name").isShown(),
+                    "compact widget can open the same configuration activity");
+            close();
+            WidgetPreferences savedFirst = WidgetPreferences.load(c, first);
+            WidgetPreferences confirmed = new WidgetPreferences(3, 3, 100, true, false, false);
+            runOnMainSync(() -> {
+                ImageView previewImage = (ImageView) WidgetSettingsActivity.pinPreview(c, confirmed, 2, 2)
+                        .apply(c, new FrameLayout(c));
+                check(previewImage.getDrawable() != null, "launcher confirmation can render the chosen draft preview");
+            });
+            Intent callback = WidgetPinRequest.callback(c, HabitWidget.provider(c, true), confirmed, "新组件");
+            check(!WidgetPinRequest.apply(c, callback), "missing launcher widget ID does not save a draft");
+            callback.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, first);
+            check(!WidgetPinRequest.apply(c, callback) && WidgetPreferences.load(c, first).sameAs(savedFirst),
+                    "callback rejects a widget belonging to a different size provider");
+            callback.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, second);
+            check(WidgetPinRequest.apply(c, callback) && WidgetPreferences.load(c, second).sameAs(confirmed)
+                    && WidgetNames.get(c, second).equals("新组件") && WidgetPreferences.load(c, first).sameAs(savedFirst),
+                    "confirmed callback applies the draft and name only to the new widget");
+            for (WidgetSizes.Size size : WidgetSizes.ALL) {
+                ComponentName component = new ComponentName(c, size.receiver);
+                AppWidgetProviderInfo registered = null;
+                for (AppWidgetProviderInfo info : manager.getInstalledProviders())
+                    if (info.provider.equals(component))
+                        registered = info;
+                check(registered != null && registered.targetCellWidth == size.columns
+                        && registered.targetCellHeight == size.rows && registered.previewLayout == 0
+                        && registered.previewImage != 0
+                        && registered.loadPreviewImage(c, 0) != null,
+                        "declared desktop size and preview match " + size.columns + "x" + size.rows);
+            }
+            check(WidgetNames.get(c, first).equals("保留的名称"), "layout restores preserve the independent name");
+            WidgetPreferences.remove(c, first);
+            check(WidgetNames.get(c, first).isEmpty(), "deleting a widget cleans up its local name");
             result.putString("stream", "\nPASS: " + checks + " immediate-style/restore/widget checks\n");
         } catch (Throwable error) {
             result.putString("stream", "\nFAIL: " + android.util.Log.getStackTraceString(error));

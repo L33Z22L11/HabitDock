@@ -4,6 +4,7 @@ import android.content.*;
 import android.appwidget.AppWidgetManager;
 
 final class WidgetPreferences {
+    static final int COMPACT_DEFAULT = -2;
     final int columns, rows, percent;
     final boolean more, moreTime, actions;
     WidgetPreferences(int columns, int rows, int percent, boolean more) {
@@ -31,20 +32,41 @@ final class WidgetPreferences {
         return new WidgetPreferences(5, 2, 82, true, false, true);
     }
 
+    static int defaultId(int desktopColumns) {
+        return desktopColumns == 2 ? COMPACT_DEFAULT : AppWidgetManager.INVALID_APPWIDGET_ID;
+    }
+
+    private static int templateId(Context c, int id) {
+        if (id <= 0)
+            return id;
+        android.appwidget.AppWidgetProviderInfo info = AppWidgetManager.getInstance(c).getAppWidgetInfo(id);
+        return info != null && HabitWidget.provider(c, true).equals(info.provider)
+                ? COMPACT_DEFAULT
+                : AppWidgetManager.INVALID_APPWIDGET_ID;
+    }
+
+    static WidgetPreferences defaults(Context c, int id) {
+        return templateId(c, id) == COMPACT_DEFAULT ? new WidgetPreferences(3, 3, 82, true) : defaults();
+    }
+
     boolean sameAs(WidgetPreferences other) {
         return columns == other.columns && rows == other.rows && percent == other.percent && more == other.more
                 && actions == other.actions && moreTime == other.moreTime;
     }
 
     private static String key(int id) {
+        if (id == COMPACT_DEFAULT)
+            return "widget.compact.default.";
         return id == AppWidgetManager.INVALID_APPWIDGET_ID ? "widget.default." : "widget." + id + ".";
     }
 
     static WidgetPreferences load(Context c, int id) {
         SharedPreferences p = Repository.prefs(c);
-        String prefix = key(id), defaults = key(AppWidgetManager.INVALID_APPWIDGET_ID);
-        return new WidgetPreferences(p.getInt(prefix + "columns", p.getInt(defaults + "columns", 5)),
-                p.getInt(prefix + "rows", p.getInt(defaults + "rows", 2)),
+        int template = templateId(c, id);
+        String prefix = key(id), defaults = key(template);
+        boolean compact = template == COMPACT_DEFAULT;
+        return new WidgetPreferences(p.getInt(prefix + "columns", p.getInt(defaults + "columns", compact ? 3 : 5)),
+                p.getInt(prefix + "rows", p.getInt(defaults + "rows", compact ? 3 : 2)),
                 p.getInt(prefix + "percent", p.getInt(defaults + "percent", 82)),
                 p.getBoolean(prefix + "more", p.getBoolean(defaults + "more", true)),
                 p.getBoolean(prefix + "actions", p.getBoolean(defaults + "actions", false)),
@@ -72,7 +94,7 @@ final class WidgetPreferences {
         String prefix = key(id);
         SharedPreferences.Editor edit = Repository.prefs(c).edit();
         for (String name : new String[]{"columns", "rows", "percent", "more", "actions", "roundness", "fill_background",
-                "more_time", "fill_color"})
+                "more_time", "fill_color", "name"})
             edit.remove(prefix + name);
         edit.apply();
     }

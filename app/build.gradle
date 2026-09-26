@@ -65,3 +65,15 @@ dependencies {
     //noinspection GradleDependency
     implementation 'androidx.core:core:1.16.0'
 }
+
+// Static fallback previews are generated once per build; runtime pin previews stay dynamic.
+def widgetPreviewsDir = layout.buildDirectory.dir('generated/widgetPreviews/res')
+def generateWidgetPreviews = tasks.register('generateWidgetPreviews', Exec) {
+    def generator = rootProject.file('scripts/GenerateWidgetPreviews.java')
+    inputs.file(generator)
+    outputs.dir(widgetPreviewsDir)
+    commandLine "${System.getProperty('java.home')}/bin/java", '-Djava.awt.headless=true',
+            generator.absolutePath, widgetPreviewsDir.get().asFile.absolutePath
+}
+android.sourceSets.main.res.srcDir(widgetPreviewsDir)
+tasks.named('preBuild').configure { dependsOn(generateWidgetPreviews) }

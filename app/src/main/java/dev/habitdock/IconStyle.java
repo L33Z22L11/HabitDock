@@ -32,7 +32,7 @@ final class IconStyle {
         SharedPreferences p = Repository.prefs(c);
         if (!p.contains("icon.roundness")) {
             // Keep the style shown on the recommendation page before upgrading.
-            int[] ids = AppWidgetManager.getInstance(c).getAppWidgetIds(new ComponentName(c, HabitWidget.class));
+            int[] ids = HabitWidget.ids(c);
             Arrays.sort(ids);
             int fallback = ids.length == 0 ? AppWidgetManager.INVALID_APPWIDGET_ID : ids[0];
             int id = p.getInt("recommendation_style_widget", fallback);
