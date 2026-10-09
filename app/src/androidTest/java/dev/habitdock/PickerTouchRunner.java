@@ -20,6 +20,12 @@ public final class PickerTouchRunner extends Instrumentation {
         start();
     }
 
+    @Override
+    public void callActivityOnResume(Activity resumed) {
+        super.callActivityOnResume(resumed);
+        current = resumed;
+    }
+
     private void check(boolean value, String description) {
         if (!value)
             throw new AssertionError(description);
@@ -51,7 +57,7 @@ public final class PickerTouchRunner extends Instrumentation {
             final boolean[] ready = {false};
             runOnMainSync(() -> {
                 View v = tagged(tag);
-                ready[0] = v != null && v.isShown() && v.getWidth() > 0;
+                ready[0] = v != null && v.isShown() && v.getWidth() > 0 && current.hasWindowFocus();
             });
             if (ready[0]) {
                 waitForIdleSync();
@@ -59,11 +65,13 @@ public final class PickerTouchRunner extends Instrumentation {
             }
             Thread.sleep(50);
         }
-        throw new AssertionError("missing visible view " + tag);
+        throw new AssertionError("missing visible view " + tag + ", activity=" + current.getClass().getSimpleName());
     }
 
     private void tap(String tag, boolean checkbox) throws Exception {
         awaitTag(tag);
+        Thread.sleep(350);
+        TouchInput.prepare(getUiAutomation());
         final float[] point = new float[2];
         runOnMainSync(() -> {
             View v = tagged(tag);
@@ -74,10 +82,16 @@ public final class PickerTouchRunner extends Instrumentation {
         });
         long now = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
-        sendPointerSync(down);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        if (!TouchInput.inject(getUiAutomation(), down, true))
+            throw new AssertionError("tap down rejected: " + tag);
         down.recycle();
-        MotionEvent up = MotionEvent.obtain(now, now + 60, MotionEvent.ACTION_UP, point[0], point[1], 0);
-        sendPointerSync(up);
+        Thread.sleep(60);
+        MotionEvent up = MotionEvent.obtain(now, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, point[0], point[1],
+                0);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        if (!TouchInput.inject(getUiAutomation(), up, true))
+            throw new AssertionError("tap up rejected: " + tag);
         up.recycle();
         waitForIdleSync();
         Thread.sleep(120);
@@ -85,6 +99,8 @@ public final class PickerTouchRunner extends Instrumentation {
 
     private void longPress(String tag) throws Exception {
         awaitTag(tag);
+        Thread.sleep(350);
+        TouchInput.prepare(getUiAutomation());
         final float[] point = new float[2];
         runOnMainSync(() -> {
             View v = tagged(tag);
@@ -95,29 +111,43 @@ public final class PickerTouchRunner extends Instrumentation {
         });
         long now = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
-        sendPointerSync(down);
+        TouchInput.inject(getUiAutomation(), down, true);
         down.recycle();
         Thread.sleep(ViewConfiguration.getLongPressTimeout() + 200);
         MotionEvent up = MotionEvent.obtain(now, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, point[0], point[1],
                 0);
-        sendPointerSync(up);
+        TouchInput.inject(getUiAutomation(), up, true);
         up.recycle();
         waitForIdleSync();
     }
 
     private void query(String text) {
-        runOnMainSync(() -> ((EditText) tagged("search")).setText(text));
+        runOnMainSync(() -> {
+            if (tagged("search") == null)
+                tagged("open-search").performClick();
+        });
+        waitForIdleSync();
+        runOnMainSync(() -> {
+            EditText search = (EditText) tagged("search");
+            search.setText(text);
+            search.clearFocus();
+            current.getSystemService(android.view.inputmethod.InputMethodManager.class)
+                    .hideSoftInputFromWindow(search.getWindowToken(), 0);
+        });
         waitForIdleSync();
     }
 
     private void open(String mode) {
         current = startActivitySync(new Intent(getTargetContext(), AppPickerActivity.class).putExtra("mode", mode)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        waitForIdleSync();
+        SystemClock.sleep(800);
     }
 
     private void close() {
         runOnMainSync(() -> current.finish());
         waitForIdleSync();
+        SystemClock.sleep(800);
     }
 
     private void tapPopupAction(String label) throws Exception {
@@ -140,13 +170,17 @@ public final class PickerTouchRunner extends Instrumentation {
         long touch = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(touch, touch, MotionEvent.ACTION_DOWN, actionBounds.centerX(),
                 actionBounds.centerY(), 0);
-        sendPointerSync(down);
+        TouchInput.inject(getUiAutomation(), down, true);
         down.recycle();
         MotionEvent up = MotionEvent.obtain(touch, touch + 60, MotionEvent.ACTION_UP, actionBounds.centerX(),
                 actionBounds.centerY(), 0);
-        sendPointerSync(up);
+        TouchInput.inject(getUiAutomation(), up, true);
         up.recycle();
         waitForIdleSync();
+        for (int i = 0; i < 80 && !current.hasWindowFocus(); i++)
+            Thread.sleep(25);
+        // The native popup exit animation can outlive its item click.
+        Thread.sleep(200);
     }
 
     @Override
@@ -157,9 +191,23 @@ public final class PickerTouchRunner extends Instrumentation {
             Repository.prefs(c).edit().clear().commit();
             List<Repository.App> apps = AppCatalog.filter(new ArrayList<>(Repository.apps(c).values()),
                     Collections.emptySet(), "");
+            check(apps.size() >= 6, "fixture has enough launchable apps for pin and menu tests");
+            long fixtureTime = System.currentTimeMillis();
+            try (UsageStore store = new UsageStore(c)) {
+                store.reset(fixtureTime - 3_600_000);
+                for (int i = 0; i < apps.size(); i++)
+                    store.getWritableDatabase().execSQL("INSERT INTO launches(pkg,stamp) VALUES (?,?)",
+                            new Object[]{apps.get(i).pkg, fixtureTime - (i + 1) * 30_000});
+            }
             String first = apps.get(0).pkg, second = apps.get(1).pkg, last = apps.get(apps.size() - 1).pkg;
             open("hidden");
             awaitTag(first);
+            tap(second, false);
+            final String[] beforeSearch = {null};
+            runOnMainSync(() -> beforeSearch[0] = (String) ((android.view.ViewGroup) ((ListView) tagged("picker-list"))
+                    .getChildAt(0)).getChildAt(0).getTag());
+            check(first.equals(beforeSearch[0]), "checking first-row second cell never moves the first cell");
+            tap(second, false);
             tap(first, false);
             check(Repository.selection(c, "hidden").contains(first),
                     "first left cell body tap persists exclusion immediately");
@@ -178,7 +226,7 @@ public final class PickerTouchRunner extends Instrumentation {
                 ListView list = (ListView) tagged("picker-list");
                 top[0] = (String) ((android.view.ViewGroup) list.getChildAt(0)).getChildAt(0).getTag();
             });
-            check(second.equals(top[0]), "selected app moves to first cell");
+            check(first.equals(top[0]), "selection and search keep the visit order stable");
             query(apps.get(apps.size() - 1).label);
             awaitTag(last);
             check(tagged(last) != null, "application name search resolves item");
@@ -205,6 +253,8 @@ public final class PickerTouchRunner extends Instrumentation {
             for (int i = 0; i < 5; i++) {
                 query(apps.get(i).pkg);
                 tap(apps.get(i).pkg, false);
+                check(Repository.selection(c, "pinned").contains(apps.get(i).pkg),
+                        "touch pins expected app: " + apps.get(i).pkg);
             }
             check(Repository.selection(c, "pinned").size() == 5, "more than four pins persist through real taps");
             check(((CheckBox) tagged("check:" + apps.get(4).pkg)).isChecked(), "fifth pin stays checked");
@@ -223,23 +273,27 @@ public final class PickerTouchRunner extends Instrumentation {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             tap("open-settings", true);
             tap("open-exclusions", true);
-            awaitTag("search");
+            awaitTag("open-search");
             query(last);
             awaitTag(last);
+            tap("search-back", true);
             tap("screen-back", true);
             check(tagged("settings-page").isShown(), "exclusion toolbar back returns to settings");
             tap("open-exclusions", true);
-            check(((EditText) tagged("search")).getText().toString().equals(last),
-                    "search survives returning through settings");
+            awaitTag("open-search");
+            check(tagged("search") == null && tagged("open-search") != null,
+                    "returning to picker keeps search collapsed");
+            query(last);
             tap("check:" + last, true);
-            check(Repository.selection(c, "hidden").contains(last), "embedded picker checkbox persists exclusion");
-            ActivityMonitor mainMonitor = addMonitor(MainActivity.class.getName(), null, false);
+            check(Repository.selection(c, "hidden").contains(last), "sibling picker checkbox persists exclusion");
+            ActivityMonitor mainMonitor = addMonitor(AppPickerActivity.class.getName(), null, false);
             runOnMainSync(() -> current.recreate());
             current = waitForMonitorWithTimeout(mainMonitor, 8000);
             removeMonitor(mainMonitor);
             awaitTag("search");
             check(tagged("exclusions-page") != null && ((EditText) tagged("search")).getText().toString().equals(last),
                     "exclusion page and search survive recreation");
+            tap("search-back", true);
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             awaitTag("settings-page");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);

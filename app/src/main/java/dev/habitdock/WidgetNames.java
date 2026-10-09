@@ -35,7 +35,7 @@ final class WidgetNames {
         String name = get(context, id);
         if (!name.isEmpty())
             return name;
-        int[] ids = HabitWidget.ids(context);
+        int[] ids = HabitWidget.boundIds(context);
         Arrays.sort(ids);
         int position = Arrays.binarySearch(ids, id);
         return position < 0 ? "桌面组件" : "桌面组件 " + (position + 1);

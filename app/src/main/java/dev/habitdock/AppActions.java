@@ -17,7 +17,8 @@ import java.util.*;
 final class AppActions {
     static PopupWindow show(Activity activity, Repository.App app, View anchor, Runnable onChanged) {
         boolean pinned = Repository.selection(activity, "pinned").contains(app.pkg);
-        String[] labels = {pinned ? "取消固定" : "固定推荐", "不推荐", "应用信息", "分享 APK"};
+        boolean hidden = Repository.selection(activity, "hidden").contains(app.pkg);
+        String[] labels = {pinned ? "取消固定" : "固定推荐", hidden ? "恢复推荐" : "不推荐", "应用信息", "分享 APK"};
         int[] icons = {R.drawable.ic_pin, R.drawable.ic_block, R.drawable.ic_info, R.drawable.ic_share};
         Rect frame = new Rect();
         anchor.getWindowVisibleDisplayFrame(frame);
@@ -44,7 +45,7 @@ final class AppActions {
         if (android.os.Build.VERSION.SDK_INT >= 28)
             content.setAccessibilityPaneTitle(app.label + "的操作");
         GradientDrawable background = Ui.shape(activity, R.color.surface, 16);
-        background.setStroke(Ui.dp(activity, 1), activity.getColor(R.color.stroke));
+        background.setStroke(Ui.dp(activity, 1), Ui.color(activity, R.color.stroke));
         ScrollView scroll = new ScrollView(activity);
         scroll.setFillViewport(false);
         scroll.addView(content);
@@ -78,7 +79,7 @@ final class AppActions {
                 Ui.nativeTouch(item);
                 ImageView icon = new ImageView(activity);
                 icon.setImageResource(icons[index]);
-                icon.setImageTintList(android.content.res.ColorStateList.valueOf(activity.getColor(R.color.ink)));
+                icon.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.color(activity, R.color.ink)));
                 icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
                 item.addView(icon, new LinearLayout.LayoutParams(Ui.dp(activity, 22), Ui.dp(activity, 22)));
                 Ui.space(item, 6);
@@ -143,7 +144,7 @@ final class AppActions {
         row.addView(pkg, detail);
         ImageButton copy = Ui.icon(c, R.drawable.ic_copy, "复制包名", v -> copyPackage(c, app));
         copy.setTag("app-actions-copy");
-        copy.setImageTintList(android.content.res.ColorStateList.valueOf(c.getColor(R.color.muted)));
+        copy.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.color(c, R.color.muted)));
         copy.setPadding(Ui.dp(c, 7), Ui.dp(c, 7), Ui.dp(c, 7), Ui.dp(c, 7));
         row.addView(copy, new LinearLayout.LayoutParams(Ui.dp(c, 28), Ui.dp(c, 28)));
         return row;
@@ -162,7 +163,7 @@ final class AppActions {
                 pins.remove(app.pkg);
             else {
                 if (Repository.selection(activity, "hidden").contains(app.pkg)) {
-                    Ui.toast(activity, "请先在「不推荐」中取消排除");
+                    Ui.toast(activity, "请先恢复推荐，再置顶");
                     return;
                 }
                 pins.add(app.pkg);
@@ -171,9 +172,10 @@ final class AppActions {
             Repository.selectionChanged(activity.getApplicationContext());
             onChanged.run();
         } else if (which == 1) {
-            Repository.setExcluded(activity.getApplicationContext(), app.pkg, true);
+            boolean hidden = Repository.selection(activity, "hidden").contains(app.pkg);
+            Repository.setExcluded(activity.getApplicationContext(), app.pkg, !hidden);
             onChanged.run();
-            Ui.toast(activity, "已不再推荐，可在「不推荐」中恢复");
+            Ui.toast(activity, hidden ? "已恢复推荐" : "已隐藏，可在「排除应用」中恢复");
         } else if (which == 2) {
             try {
                 activity.startActivity(

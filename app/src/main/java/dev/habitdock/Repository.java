@@ -49,11 +49,17 @@ final class Repository {
     }
     static final class Snapshot {
         final Map<String, App> apps;
-        final List<Predictor.Prediction> predictions;
+        final List<Predictor.Prediction> predictions, ranked;
         final int samples, days;
         final boolean permitted;
         Snapshot(Map<String, App> apps, List<Predictor.Prediction> predictions, int samples, int days,
                 boolean permitted) {
+            this(apps, predictions, predictions, samples, days, permitted);
+        }
+
+        Snapshot(Map<String, App> apps, List<Predictor.Prediction> predictions,
+                List<Predictor.Prediction> ranked, int samples, int days, boolean permitted) {
+            this.ranked = ranked;
             this.apps = apps;
             this.predictions = predictions;
             this.samples = samples;
@@ -70,7 +76,8 @@ final class Repository {
     }
 
     static Set<String> eligible(Context c, Set<String> installed) {
-        return PrivacyPolicy.eligible(installed, selection(c, "hidden"));
+        // Hidden apps continue to learn; visibility is applied after ranking.
+        return new HashSet<>(installed);
     }
 
     static void setExcluded(Context c, String pkg, boolean excluded) {
@@ -95,7 +102,7 @@ final class Repository {
         WORK.execute(() -> {
             try {
                 try (UsageStore store = new UsageStore(c)) {
-                    store.enforcePrivacy(eligible(c, apps(c).keySet()));
+                    store.retainInstalled(eligible(c, apps(c).keySet()));
                     store.sync(System.currentTimeMillis());
                 }
                 HabitWidget.update(c, false);
@@ -157,7 +164,13 @@ final class Repository {
                 days.add(
                         java.time.Instant.ofEpochMilli(e.time).atZone(ZoneId.systemDefault()).toLocalDate().toString());
             }
-        return new Snapshot(apps, RecommendationLimit.apply(predictions, pinned, RecommendationLimit.load(c)),
-                count, days.size(), permitted);
+        Set<String> visible = AppVisibility.eligible(eligible, selection(c, "hidden"));
+        List<Predictor.Prediction> displayed = new ArrayList<>();
+        for (Predictor.Prediction prediction : predictions)
+            if (visible.contains(prediction.pkg))
+                displayed.add(prediction);
+        int limit = RecommendationLimit.load(c);
+        return new Snapshot(apps, RecommendationLimit.apply(displayed, pinned, limit),
+                predictions, count, days.size(), permitted);
     }
 }

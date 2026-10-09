@@ -24,6 +24,14 @@ public final class SettingsPageRunner extends Instrumentation {
         start();
     }
 
+    @Override
+    public void callActivityOnResume(Activity resumed) {
+        super.callActivityOnResume(resumed);
+        if (resumed instanceof MainActivity || resumed instanceof SettingsActivity
+                || resumed instanceof MainStyleActivity)
+            activity = resumed;
+    }
+
     private void check(boolean condition, String message) {
         if (!condition)
             throw new AssertionError(message);
@@ -36,6 +44,7 @@ public final class SettingsPageRunner extends Instrumentation {
 
     private void click(String tag) {
         runOnMainSync(() -> view(tag).performClick());
+        SystemClock.sleep(260);
         waitForIdleSync();
     }
 
@@ -54,6 +63,29 @@ public final class SettingsPageRunner extends Instrumentation {
         throw new AssertionError("missing UI: " + label);
     }
 
+    private AccessibilityNodeInfo firstPicker(AccessibilityNodeInfo root) {
+        if (root == null)
+            return null;
+        if ("android.widget.NumberPicker".contentEquals(root.getClassName()))
+            return root;
+        for (int i = 0; i < root.getChildCount(); i++) {
+            AccessibilityNodeInfo found = firstPicker(root.getChild(i));
+            if (found != null)
+                return found;
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo picker() {
+        for (int i = 0; i < 80; i++) {
+            AccessibilityNodeInfo found = firstPicker(getUiAutomation().getRootInActiveWindow());
+            if (found != null)
+                return found;
+            SystemClock.sleep(50);
+        }
+        throw new AssertionError("missing duration picker");
+    }
+
     private void choose(String label) {
         Rect bounds = new Rect();
         node(label).getBoundsInScreen(bounds);
@@ -61,19 +93,67 @@ public final class SettingsPageRunner extends Instrumentation {
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, bounds.centerX(), bounds.centerY(), 0);
         MotionEvent up = MotionEvent.obtain(now, now + 60, MotionEvent.ACTION_UP, bounds.centerX(), bounds.centerY(),
                 0);
-        sendPointerSync(down);
-        sendPointerSync(up);
+        getUiAutomation().injectInputEvent(down, true);
+        getUiAutomation().injectInputEvent(up, true);
         down.recycle();
         up.recycle();
         SystemClock.sleep(ViewConfiguration.getPressedStateDuration() + 80);
         waitForIdleSync();
     }
 
+    private void changeTheme(String label, int expected) {
+        if (!(activity instanceof MainStyleActivity))
+            click("open-main-style");
+        if (Appearance.dynamic(activity))
+            toggleDynamic();
+        int style = "浅色".equals(label) ? Appearance.LIGHT : "深色".equals(label) ? Appearance.DARK : Appearance.SYSTEM;
+        ActivityMonitor monitor = addMonitor(MainStyleActivity.class.getName(), null, false);
+        click("app-color-mode-" + style);
+        activity = waitForMonitorWithTimeout(monitor, 8000);
+        removeMonitor(monitor);
+        check(activity != null, "theme change recreates activity");
+        waitForIdleSync();
+        check((activity.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == expected,
+                "chosen theme changes actual resources");
+        check(view("app-color-mode-" + style).isSelected(), "theme change keeps application style selected");
+    }
+
+    private void toggleDynamic() {
+        int selected = Appearance.dynamic(activity) ? 0 : 1;
+        ActivityMonitor monitor = addMonitor(MainStyleActivity.class.getName(), null, false);
+        click("app-scheme-" + selected);
+        activity = waitForMonitorWithTimeout(monitor, 8000);
+        removeMonitor(monitor);
+        check(activity != null, "palette selection recreates activity");
+        waitForIdleSync();
+        check(view("app-scheme-" + selected).isSelected(), "palette selection remains selected");
+    }
+
+    private AccessibilityNodeInfo range(AccessibilityNodeInfo root) {
+        if (root == null)
+            return null;
+        if (root.getRangeInfo() != null)
+            return root;
+        for (int i = 0; i < root.getChildCount(); i++) {
+            AccessibilityNodeInfo found = range(root.getChild(i));
+            if (found != null)
+                return found;
+        }
+        return null;
+    }
+
     private void number(String value) {
-        Bundle text = new Bundle();
-        text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
-        check(node("推荐上限，1 到 100 个").performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text),
-                "numeric field accepts input");
+        AccessibilityNodeInfo slider = range(getUiAutomation().getRootInActiveWindow());
+        for (int i = 0; slider == null && i < 80; i++) {
+            SystemClock.sleep(50);
+            slider = range(getUiAutomation().getRootInActiveWindow());
+        }
+        check(slider != null, "recommendation count exposes a slider range");
+        Bundle args = new Bundle();
+        args.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, Float.parseFloat(value));
+        check(slider.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId(), args),
+                "slider accepts an exact count");
         waitForIdleSync();
     }
 
@@ -127,14 +207,14 @@ public final class SettingsPageRunner extends Instrumentation {
             Repository.WORK.submit(() -> {
             }).get();
             click("open-settings");
+            check(activity instanceof SettingsActivity, "settings has its own Activity for system predictive back");
             check(view("recommendation-limit").getContentDescription().toString().contains("20 个"),
                     "settings shows default twenty");
             click("recommendation-limit");
-            number("0");
-            choose("确定");
-            check(RecommendationLimit.load(context) == 20
-                    && "请输入 1–100".contentEquals(node("推荐上限，1 到 100 个").getError()),
-                    "invalid limit stays in dialog without changing saved setting");
+            number("1");
+            check(RecommendationLimit.load(context) == 20, "slider draft is not saved before confirmation");
+            choose("增加推荐数量");
+            choose("减少推荐数量");
             number("2");
             screenshot("limit-dialog");
             choose("确定");
@@ -154,6 +234,22 @@ public final class SettingsPageRunner extends Instrumentation {
             number("40");
             choose("取消");
             check(RecommendationLimit.load(context) == 2, "cancel leaves the previous limit intact");
+
+            click("refresh-interval");
+            check(picker().performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD),
+                    "duration picker changes hours");
+            waitForIdleSync();
+            screenshot("duration-picker");
+            choose("确定");
+            check(RefreshPolicy.minutes(context) == 90, "hour and minute duration saves ninety minutes");
+            check(!((ThemedActivity) activity).getOnBackPressedDispatcher().hasEnabledCallbacks(),
+                    "settings return leaves the system predictive Activity transition unhandled");
+            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            SystemClock.sleep(600);
+            waitForIdleSync();
+            check(!(activity instanceof SettingsActivity) && view("recommend-page").isShown(),
+                    "system back returns to the existing recommendation Activity");
+            click("open-settings");
 
             web = new ActivityMonitor() {
                 @Override
@@ -212,7 +308,7 @@ public final class SettingsPageRunner extends Instrumentation {
             check(opened.getDataString().equals(AppUpdates.RELEASES), "failed check can still open release history");
             check(view("check-updates").isEnabled(), "checking remains available after failure");
             check(RefreshPolicy.last(context) == now, "settings and update actions preserve recommendation time");
-            ActivityMonitor recreated = addMonitor(MainActivity.class.getName(), null, false);
+            ActivityMonitor recreated = addMonitor(SettingsActivity.class.getName(), null, false);
             runOnMainSync(activity::recreate);
             activity = waitForMonitorWithTimeout(recreated, 5000);
             removeMonitor(recreated);
@@ -224,6 +320,36 @@ public final class SettingsPageRunner extends Instrumentation {
             check(view("open-about").getContentDescription().toString().contains(learning)
                     && RefreshPolicy.last(context) == now,
                     "restored settings loads learning summary without regenerating recommendations");
+            changeTheme("浅色", android.content.res.Configuration.UI_MODE_NIGHT_NO);
+            check("浅色".equals(Appearance.modeLabel(context)), "light preference persists");
+            runOnMainSync(() -> view("app-color-mode-2").requestFocus());
+            screenshot("settings-material-light");
+            int lightBackground = Ui.color(activity, R.color.page);
+            changeTheme("深色", android.content.res.Configuration.UI_MODE_NIGHT_YES);
+            check(Ui.color(activity, R.color.page) != lightBackground,
+                    "custom page colors change with the Material theme");
+            runOnMainSync(() -> view("app-color-mode-2").requestRectangleOnScreen(new Rect(0, 0,
+                    view("app-color-mode-2").getWidth(), view("app-color-mode-2").getHeight()), true));
+            screenshot("settings-material-dark");
+            if (Appearance.supportsDynamic()) {
+                toggleDynamic();
+                check(Appearance.dynamic(context), "device palette selected explicitly");
+                int dynamicAccent = Ui.color(activity, R.color.accent);
+                toggleDynamic();
+                check(!Appearance.dynamic(context)
+                        && Ui.color(activity, R.color.accent) == activity.getColor(R.color.accent),
+                        "disabling system palette restores the app accent");
+                toggleDynamic();
+                check(Appearance.dynamic(context) && Ui.color(activity, R.color.accent) == dynamicAccent,
+                        "re-enabling system palette restores its accent");
+            }
+            check(RecommendationLimit.load(context) == 2 && RefreshPolicy.last(context) == now,
+                    "appearance changes preserve recommendation settings and timestamp");
+            changeTheme("浅色", android.content.res.Configuration.UI_MODE_NIGHT_NO);
+            int systemMode = context.getResources().getConfiguration().uiMode
+                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            changeTheme("跟随系统", systemMode);
+            check("跟随系统".equals(Appearance.modeLabel(context)), "system mode preference persists");
             if (checkNetwork) {
                 AppUpdates.Release actual = AppUpdates.fetch();
                 check(actual.tag.startsWith("v") && actual.url().startsWith(AppUpdates.RELEASES + "/tag/"),

@@ -9,15 +9,21 @@ final class RecommendationList extends ListView {
     private final Context context;
     private final int columns;
     private IconStyle iconStyle;
+    private String renderedStyle = "";
+    private MainStyle mainStyle;
+    private Set<String> pins = Collections.emptySet();
     private List<Predictor.Prediction> predictions = Collections.emptyList();
     private Map<String, Repository.App> apps = Collections.emptyMap();
     private final BaseAdapter adapter;
+    private android.graphics.drawable.Drawable normalScrollbar;
+    private Set<String> hidden = Collections.emptySet();
     java.util.function.BiConsumer<Repository.App, View> onMenu = (app, anchor) -> {
     };
     RecommendationList(Context a) {
         super(a);
         context = a;
         iconStyle = IconStyle.load(a);
+        mainStyle = MainStyle.load(a);
         columns = getResources().getConfiguration().fontScale > 1.35f ? 1 : 2;
         setDivider(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         setDividerHeight(Ui.dp(a, 4));
@@ -52,11 +58,15 @@ final class RecommendationList extends ListView {
                     row = (LinearLayout) reused;
                 else {
                     row = new LinearLayout(context);
-                    for (int i = 0; i < columns; i++)
-                        row.addView(new AppTile(context), new LinearLayout.LayoutParams(0, -1, 1));
+                    for (int i = 0; i < columns; i++) {
+                        LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, -1, 1);
+                        if (i + 1 < columns)
+                            cell.setMarginEnd(Ui.dp(context, 4));
+                        row.addView(new AppTile(context), cell);
+                    }
                 }
                 row.setLayoutParams(new AbsListView.LayoutParams(-1,
-                        Ui.dp(context, 72 * Math.max(1f, getResources().getConfiguration().fontScale))));
+                        Ui.dp(context, mainStyle.rowDp(context))));
                 for (int i = 0; i < columns; i++) {
                     AppTile tile = (AppTile) row.getChildAt(i);
                     int index = pos * columns + i;
@@ -67,7 +77,7 @@ final class RecommendationList extends ListView {
                     tile.setVisibility(View.VISIBLE);
                     Predictor.Prediction p = predictions.get(index);
                     Repository.App app = apps.get(p.pkg);
-                    tile.bind(app, p.reason, iconStyle);
+                    tile.bind(app, p, iconStyle, mainStyle, pins.contains(p.pkg));
                     tile.setOnClickListener(v -> Ui.launch(context, p.pkg));
                     tile.setOnLongClickListener(v -> {
                         onMenu.accept(app, tile);
@@ -78,6 +88,22 @@ final class RecommendationList extends ListView {
             }
         };
         setAdapter(adapter);
+        if (android.os.Build.VERSION.SDK_INT >= 29)
+            normalScrollbar = getVerticalScrollbarThumbDrawable();
+        applyScrollbar(mainStyle);
+    }
+
+    void applyScrollbar(MainStyle style) {
+        if (android.os.Build.VERSION.SDK_INT < 29)
+            return;
+        if (style.hasBackground()) {
+            android.graphics.drawable.GradientDrawable thumb = new android.graphics.drawable.GradientDrawable();
+            thumb.setColor(0xBEFFFFFF);
+            thumb.setCornerRadius(Ui.dp(context, 2));
+            thumb.setSize(Ui.dp(context, 3), Ui.dp(context, 32));
+            setVerticalScrollbarThumbDrawable(thumb);
+        } else
+            setVerticalScrollbarThumbDrawable(normalScrollbar);
     }
 
     void reveal(String pkg, java.util.function.Consumer<View> ready) {
@@ -105,10 +131,30 @@ final class RecommendationList extends ListView {
     }
 
     void show(Repository.Snapshot data) {
-        iconStyle = IconStyle.load(context);
+        IconStyle nextStyle = IconStyle.load(context);
+        MainStyle nextMainStyle = MainStyle.load(context);
+        Set<String> nextPins = Repository.selection(context, "pinned");
+        List<Predictor.Prediction> visible = nextMainStyle.visiblePredictions(context, data);
+        Set<String> nextHidden = Repository.selection(context, "hidden");
+        String nextKey = nextStyle.cacheKey(context) + ":" + nextMainStyle.key();
+        boolean same = nextHidden.equals(hidden) && nextKey.equals(renderedStyle) && nextPins.equals(pins)
+                && predictions.size() == visible.size();
+        for (int i = 0; same && i < predictions.size(); i++) {
+            Predictor.Prediction before = predictions.get(i), after = visible.get(i);
+            Repository.App oldApp = apps.get(before.pkg), newApp = data.apps.get(after.pkg);
+            same = before.pkg.equals(after.pkg) && Objects.equals(mainStyle.reason(before), nextMainStyle.reason(after))
+                    && oldApp != null && newApp != null && Objects.equals(oldApp.label, newApp.label);
+        }
+        iconStyle = nextStyle;
+        renderedStyle = nextKey;
+        mainStyle = nextMainStyle;
+        pins = nextPins;
+        hidden = nextHidden;
         apps = data.apps;
-        predictions = data.predictions;
-        adapter.notifyDataSetChanged();
+        predictions = visible;
+        // Returning from settings must preserve the rendered rows and scroll position.
+        if (!same)
+            adapter.notifyDataSetChanged();
     }
 
     void clear() {

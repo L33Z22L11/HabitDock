@@ -41,7 +41,7 @@ final class PickerCell extends LinearLayout {
         check.setPadding(0, 0, 0, 0);
         check.setGravity(Gravity.CENTER);
         check.setButtonTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{c.getColor(R.color.accent), c.getColor(R.color.muted)}));
+                new int[]{Ui.color(c, R.color.accent), Ui.color(c, R.color.muted)}));
         check.setStateListAnimator(null);
         check.setElevation(0);
         check.setBackground(null);
@@ -65,15 +65,24 @@ final class PickerCell extends LinearLayout {
         pkg.setText(app.pkg);
         check.setOnCheckedChangeListener(null);
         check.setChecked(selected);
+        check.jumpDrawablesToCurrentState();
         check.setContentDescription(app.label + "，" + app.pkg);
+        selectionBackground(selected);
+        IconLoader.bind(getContext(), app.pkg, icon);
+        check.setOnCheckedChangeListener((button, checked) -> {
+            selectionBackground(checked);
+            listener.onCheckedChanged(button, checked);
+        });
+    }
+
+    private void selectionBackground(boolean selected) {
         // Inset only the painted card: keep the compact 48dp touch target intact.
         android.graphics.drawable.Drawable card = Ui.shape(getContext(), selected ? R.color.soft : R.color.page, 8);
         android.graphics.drawable.InsetDrawable inset = new android.graphics.drawable.InsetDrawable(card, 0,
                 Ui.dp(getContext(), 2), 0, Ui.dp(getContext(), 2));
         setBackground(new android.graphics.drawable.RippleDrawable(
-                ColorStateList.valueOf(getContext().getColor(R.color.soft)), inset, null));
+                ColorStateList.valueOf(Ui.color(getContext(), R.color.soft)), inset, null));
         setPadding(Ui.dp(getContext(), 16), 0, 0, 0);
-        IconLoader.bind(getContext(), app.pkg, icon);
-        check.setOnCheckedChangeListener(listener);
     }
+
 }

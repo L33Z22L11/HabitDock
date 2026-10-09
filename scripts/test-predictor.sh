@@ -6,7 +6,7 @@ if [ -z "${JAVA_HOME:-}" ] && [ -d /opt/homebrew/opt/openjdk@17 ]; then
     export JAVA_HOME
 fi
 mkdir -p build/predictor-tests
-"${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/Predictor.java app/src/main/java/dev/habitdock/PrivacyPolicy.java tests/PredictorTest.java
+"${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/Predictor.java app/src/main/java/dev/habitdock/AppVisibility.java tests/PredictorTest.java
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests PredictorTest
 "${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/AppCatalog.java app/src/main/java/dev/habitdock/WidgetSizing.java tests/PickerLayoutTest.java
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests PickerLayoutTest
@@ -14,3 +14,5 @@ mkdir -p build/predictor-tests
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -Djava.awt.headless=true -cp build/predictor-tests IconBackgroundTest
 "${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/WidgetAllocation.java tests/WidgetAllocationTest.java
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests dev.habitdock.WidgetAllocationTest
+"${JAVA_HOME:+$JAVA_HOME/bin/}javac" -d build/predictor-tests app/src/main/java/dev/habitdock/BackgroundBlur.java tests/BackgroundBlurTest.java
+"${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp build/predictor-tests dev.habitdock.BackgroundBlurTest

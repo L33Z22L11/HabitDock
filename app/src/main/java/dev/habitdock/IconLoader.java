@@ -29,8 +29,7 @@ final class IconLoader {
                 new android.content.res.Configuration(context.getResources().getConfiguration()));
         WORK.execute(() -> {
             try {
-                Drawable icon = app.getPackageManager().getApplicationIcon(pkg);
-                Bitmap bitmap = WidgetIcons.style(app, WidgetIcons.source(icon), style);
+                Bitmap bitmap = IconPacks.styled(app, pkg, style);
                 CACHE.put(key, bitmap);
                 MAIN.post(() -> {
                     if (key.equals(view.getTag()))

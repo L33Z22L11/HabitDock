@@ -1,6 +1,10 @@
 package dev.habitdock;
 
 public final class WidgetSizing {
+    public static float previewWidth(float available, float density, boolean wide) {
+        return Math.min(Math.max(0, available), 340 * density) / (wide ? 1 : 2);
+    }
+
     public static float iconDp(float width, float height) {
         return iconDp(width, height, 5, 2, 82);
     }

@@ -59,8 +59,8 @@ public final class StyleSettingsRunner extends Instrumentation {
         long now = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
         MotionEvent up = MotionEvent.obtain(now, now + 60, MotionEvent.ACTION_UP, x, y, 0);
-        sendPointerSync(down);
-        sendPointerSync(up);
+        getUiAutomation().injectInputEvent(down, true);
+        getUiAutomation().injectInputEvent(up, true);
         down.recycle();
         up.recycle();
         // Native ListView dispatches its item click after the pressed-state delay.
@@ -69,8 +69,18 @@ public final class StyleSettingsRunner extends Instrumentation {
     }
 
     private void tap(String tag) {
+        runOnMainSync(() -> {
+            View target = view(tag);
+            target.requestRectangleOnScreen(new Rect(0, 0, target.getWidth(), target.getHeight()), true);
+        });
+        SystemClock.sleep(200);
         Rect bounds = new Rect();
-        runOnMainSync(() -> view(tag).getGlobalVisibleRect(bounds));
+        runOnMainSync(() -> {
+            View target = view(tag);
+            if (!target.getGlobalVisibleRect(bounds) || bounds.isEmpty())
+                throw new AssertionError("Not visible: " + tag + " size=" + target.getWidth() + "x" + target.getHeight()
+                        + " window=" + current.getClass().getSimpleName());
+        });
         tap(bounds.centerX(), bounds.centerY());
     }
 
@@ -100,6 +110,19 @@ public final class StyleSettingsRunner extends Instrumentation {
         tap(bounds.centerX(), bounds.centerY());
     }
 
+    private AccessibilityNodeInfo colorRange(AccessibilityNodeInfo root) {
+        if (root == null)
+            return null;
+        if (root.getRangeInfo() != null)
+            return root;
+        for (int i = 0; i < root.getChildCount(); i++) {
+            AccessibilityNodeInfo match = colorRange(root.getChild(i));
+            if (match != null)
+                return match;
+        }
+        return null;
+    }
+
     private void enterWidgetName(String value) throws Exception {
         tap("widget-name");
         for (int i = 0; i < 60; i++) {
@@ -121,7 +144,7 @@ public final class StyleSettingsRunner extends Instrumentation {
     }
 
     private void progress(String tag, int value) {
-        runOnMainSync(() -> ((SeekBar) view(tag)).setProgress(value));
+        runOnMainSync(() -> ((com.google.android.material.slider.Slider) view(tag)).setValue(value));
         waitForIdleSync();
     }
 
@@ -162,7 +185,7 @@ public final class StyleSettingsRunner extends Instrumentation {
                 throw new AssertionError("this test may only reset an emulator");
             Context c = getTargetContext();
             Repository.prefs(c).edit().clear().commit();
-            IconStyle original = new IconStyle(73, true, 0xffe2c4dd);
+            IconStyle original = new IconStyle(73, true, 0, getContext().getPackageName());
             original.save(c);
             AppWidgetManager manager = c.getSystemService(AppWidgetManager.class);
             AtomicInteger updates = new AtomicInteger();
@@ -184,6 +207,8 @@ public final class StyleSettingsRunner extends Instrumentation {
             check(manager.bindAppWidgetIdIfAllowed(first, provider)
                     && manager.bindAppWidgetIdIfAllowed(second, HabitWidget.provider(c, true)),
                     "two real widget bindings (grantbind on the emulator before running)");
+            WidgetInstances.confirm(c, first);
+            WidgetInstances.confirm(c, second);
             check(WidgetPreferences.load(c, WidgetPreferences.COMPACT_DEFAULT).columns == 3
                     && WidgetPreferences.load(c, WidgetPreferences.COMPACT_DEFAULT).rows == 3
                     && WidgetPreferences.load(c, second).columns == 3 && WidgetPreferences.load(c, second).rows == 3,
@@ -219,11 +244,44 @@ public final class StyleSettingsRunner extends Instrumentation {
             settle();
             long stamp = System.currentTimeMillis() - 2 * 60 * 60 * 1000;
             RefreshPolicy.succeeded(c, stamp, UsageStore.permitted(c));
+            Map<String, ?> beforePreview = new HashMap<>(Repository.prefs(c).getAll());
+            PreviewContent realPreview = PreviewContent.load(c, original.pack, -1, 3, true);
+            check(!realPreview.sources.isEmpty() && realPreview.sources.size() == realPreview.labels.size(),
+                    "preview loads real installed app icons and labels");
+            check(realPreview.stamp == stamp && !realPreview.time().isEmpty(),
+                    "preview displays the actual recommendation timestamp");
+            check(beforePreview.equals(Repository.prefs(c).getAll()) && RefreshPolicy.last(c) == stamp,
+                    "loading preview changes neither preferences nor recommendation time");
             open(IconStyleActivity.class);
+            settle();
+            WidgetSettingsActivity.Preview iconPreview = (WidgetSettingsActivity.Preview) view("icon-preview");
+            check(iconPreview.layout.columns == 5 && iconPreview.layout.rows == 2 && !iconPreview.layout.more,
+                    "first icon preview has ten app slots and no more button");
+            WidgetSettingsActivity.Preview secondPreview = (WidgetSettingsActivity.Preview) view(
+                    "icon-preview-secondary");
+            check(iconPreview.data.stamp == stamp && iconPreview.data.sources.size() <= iconPreview.layout.capacity(),
+                    "first preview stamp=" + iconPreview.data.stamp + " expected=" + stamp + " current="
+                            + RefreshPolicy.last(c) + " count=" + iconPreview.data.sources.size() + " capacity="
+                            + iconPreview.layout.capacity());
+            check(secondPreview != null && Collections.disjoint(iconPreview.data.packages, secondPreview.data.packages),
+                    "the two consecutive 4x2 previews show different installed apps");
             check(!view("icon-style-save").isShown(), "unchanged editor has no right toolbar action");
+            tap("icon-pack");
+            choose("应用原图标");
+            check(IconStyle.load(c).pack.isEmpty() && IconStyle.load(c).fillBackground,
+                    "icon pack picker switches back to original icons immediately");
+            runOnMainSync(() -> view("icon-fill-2").performClick());
+            check(IconStyle.load(c).pack.isEmpty() && IconStyle.load(c).fillBackground,
+                    "adaptive fill is independent of icon pack selection");
+            tap("icon-style-save");
+            choose("恢复上次");
+            check(IconStyle.load(c).sameAs(original), "undo restores the selected pack and appearance together");
+            tap("icon-pack");
+            choose("取消");
+            check(IconStyle.load(c).sameAs(original), "canceling pack selection preserves the selected pack");
             int beforeUpdates = updates.get();
             progress("icon-roundness", 100);
-            check(IconStyle.load(c).roundness == 100 && action("icon-style-save", "撤销更改"),
+            check(IconStyle.load(c).roundness == 100 && action("icon-style-save", "重置"),
                     "roundness persists while editor stays open and toolbar switches to undo");
             awaitUpdate(updates, beforeUpdates);
             settle();
@@ -245,27 +303,22 @@ public final class StyleSettingsRunner extends Instrumentation {
             progress("icon-roundness", 0);
             tap("icon-style-save");
             choose("恢复默认");
-            check(IconStyle.load(c).sameAs(IconStyle.defaults()) && action("icon-style-save", "撤销更改"),
+            check(IconStyle.load(c).sameAs(IconStyle.defaults()) && action("icon-style-save", "重置"),
                     "factory defaults reset all icon fields but keep original restore point");
             tap("icon-style-save");
             choose("恢复上次");
-            tap("icon-fill-color");
-            choose("选择 #DCE8FF");
-            check(IconStyle.load(c).fillColor == 0xffdce8ff, "palette applies before color dialog confirmation");
-            choose("取消");
-            check(IconStyle.load(c).sameAs(original), "cancel color dialog restores its opening color");
-            tap("icon-fill-color");
-            choose("选择 #DBEFE2");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
-            waitForIdleSync();
-            check(IconStyle.load(c).sameAs(original), "system back also cancels color preview");
-            tap("icon-fill-color");
-            choose("自适应颜色");
-            check(IconStyle.load(c).fillColor == 0, "adaptive edge fill applies immediately");
-            tap("icon-fill-color");
-            choose("完成");
-            check(IconStyle.load(c).fillColor == 0,
-                    "viewing color picker does not turn adaptive mode into a solid color");
+            tap("icon-pack");
+            choose("应用原图标");
+            runOnMainSync(() -> view("icon-fill-1").performClick());
+            check(IconStyle.load(c).fillBackground && IconStyle.load(c).fillColor == android.graphics.Color.WHITE,
+                    "white fill applies immediately");
+            runOnMainSync(() -> view("icon-fill-0").performClick());
+            check(!IconStyle.load(c).fillBackground, "fill can be disabled without changing icon pack");
+            runOnMainSync(() -> view("icon-fill-2").performClick());
+            check(IconStyle.load(c).fillBackground && IconStyle.load(c).fillColor == 0,
+                    "adaptive fill applies immediately");
+            recreate();
+            check(view("icon-fill-2").isSelected(), "adaptive fill selection survives recreation");
             progress("icon-roundness", 25);
             close();
             open(IconStyleActivity.class);
@@ -281,6 +334,10 @@ public final class StyleSettingsRunner extends Instrumentation {
             open(WidgetSettingsActivity.class);
             check(!view("widget-save").isShown() && WidgetPreferences.load(c, first).sameAs(before),
                     "binding widget controls does not modify their saved values");
+            Spinner targets = (Spinner) view("widget-target");
+            check("默认布局".equals(targets.getItemAtPosition(0)) && "已启用".equals(targets.getItemAtPosition(3))
+                    && !((android.widget.BaseAdapter) targets.getAdapter()).isEnabled(0),
+                    "grouped picker puts disabled headings before defaults and enabled instances");
             enterWidgetName("  工作  ");
             choose("保存");
             check(WidgetNames.get(c, first).equals("工作") && WidgetNames.get(c, second).isEmpty()
@@ -305,19 +362,19 @@ public final class StyleSettingsRunner extends Instrumentation {
             beforeUpdates = updates.get();
             progress("widget-columns", 4);
             progress("widget-scale", 95);
-            runOnMainSync(() -> ((Switch) view("widget-more")).setChecked(true));
+            runOnMainSync(() -> ((CompoundButton) view("widget-more")).setChecked(true));
             check(WidgetPreferences.load(c, first).columns == 4 && WidgetPreferences.load(c, first).percent == 95
-                    && WidgetPreferences.load(c, first).more && action("widget-save", "撤销更改"),
+                    && WidgetPreferences.load(c, first).more && action("widget-save", "重置"),
                     "grid, scale and toggle apply immediately");
             awaitUpdate(updates, beforeUpdates);
             check(WidgetPreferences.load(c, second).sameAs(other), "editing one widget preserves the second");
-            selection("widget-target", 2);
+            selection("widget-target", 1);
             check(!view("widget-name").isShown(), "new-widget defaults cannot be named as an instance");
             progress("widget-columns", 2);
             check(WidgetPreferences.load(c, 0).columns == 2 && WidgetPreferences.load(c, first).columns == 4
                     && WidgetPreferences.load(c, second).sameAs(other),
                     "new-widget defaults do not alter existing widgets");
-            selection("widget-target", 0);
+            selection("widget-target", 4);
             recreate();
             tap("widget-save");
             choose("恢复上次");
@@ -387,6 +444,15 @@ public final class StyleSettingsRunner extends Instrumentation {
         } catch (Throwable error) {
             result.putString("stream", "\nFAIL: " + android.util.Log.getStackTraceString(error));
             status = Activity.RESULT_CANCELED;
+            try {
+                android.graphics.Bitmap shot = getUiAutomation().takeScreenshot();
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(
+                        new java.io.File(getTargetContext().getCacheDir(), "style-failure.png"))) {
+                    shot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                }
+                shot.recycle();
+            } catch (Exception ignored) {
+            }
         } finally {
             if (host != null)
                 host.deleteHost();

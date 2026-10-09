@@ -20,16 +20,21 @@ public final class Predictor {
     public static final class Prediction {
         public final String pkg;
         public final double score;
-        public final String reason;
+        public final String reason, detailReason;
         public Prediction(String pkg, double score, String reason) {
+            this(pkg, score, reason, reason);
+        }
+
+        public Prediction(String pkg, double score, String reason, String detailReason) {
             this.pkg = pkg;
             this.score = score;
             this.reason = reason;
+            this.detailReason = detailReason;
         }
     }
     private static final class Signal {
         double frequency, temporal, recent;
-        int count;
+        int count, lastWeek, targetHour, targetWeekday, targetDayHour;
     }
     private static boolean weekend(DayOfWeek day) {
         return day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
@@ -41,6 +46,7 @@ public final class Predictor {
         double targetMinute = target.getHour() * 60 + target.getMinute();
         Map<String, Signal> signals = new HashMap<>();
         double frequencySum = 0, temporalSum = 0, recentSum = 0;
+        long earliest = observedNow;
         for (Launch event : events) {
             long age = observedNow - event.time;
             if (age < 0 || age > 60 * DAY || !eligible.contains(event.pkg))
@@ -59,6 +65,16 @@ public final class Predictor {
             s.temporal += temporal;
             s.recent += recent;
             s.count++;
+            earliest = Math.min(earliest, event.time);
+            if (age <= 7 * DAY)
+                s.lastWeek++;
+            if (local.getHour() == target.getHour())
+                s.targetHour++;
+            if (local.getDayOfWeek() == target.getDayOfWeek()) {
+                s.targetWeekday++;
+                if (local.getHour() == target.getHour())
+                    s.targetDayHour++;
+            }
             frequencySum += decay;
             temporalSum += temporal;
             recentSum += recent;
@@ -78,7 +94,22 @@ public final class Predictor {
                     : s.temporal / s.frequency > 0.45
                             ? (weekend(target.getDayOfWeek()) ? "周末这个时间常用" : "这个时间常用")
                             : "最近经常打开";
-            result.add(new Prediction(e.getKey(), score, reason));
+            int days = Math.max(1, Math.min(60, (int) Math.ceil((observedNow - earliest) / (double) DAY)));
+            String detail = s.count < 3
+                    ? reason
+                    : "近" + (s.lastWeek > 0 ? Math.min(7, days) : days) + "天打开"
+                            + (s.lastWeek > 0 ? s.lastWeek : s.count) + "次";
+            if (s.count >= 3 && s.temporal / s.frequency > .45) {
+                String weekday = "周" + "一二三四五六日".charAt(target.getDayOfWeek().getValue() - 1);
+                String hour = String.format(Locale.ROOT, "%02d:00", target.getHour());
+                if (s.targetDayHour >= 3 && s.targetDayHour >= s.count * .35)
+                    detail = weekday + " " + hour + "常用";
+                else if (s.targetHour >= 3 && s.targetHour >= s.count * .25)
+                    detail = hour + "–" + String.format(Locale.ROOT, "%02d:00", (target.getHour() + 1) % 24) + "常用";
+                else if (s.targetWeekday >= 3 && s.targetWeekday >= s.count * .4)
+                    detail = weekday + "常用";
+            }
+            result.add(new Prediction(e.getKey(), score, reason, detail));
         }
         result.sort(Comparator.comparingDouble((Prediction p) -> p.score).reversed().thenComparing(p -> p.pkg));
         return result;

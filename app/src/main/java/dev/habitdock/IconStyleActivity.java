@@ -1,27 +1,42 @@
 package dev.habitdock;
+import com.google.android.material.slider.Slider;
 
-import android.app.Activity;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
-import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.*;
 import android.widget.*;
-import java.util.Locale;
 
 /**
  * Global appearance editor with immediate persistence and a session restore
  * point.
  */
-public final class IconStyleActivity extends Activity {
-    private SeekBar roundness;
-    private Switch fill;
-    private ImageButton color;
+public final class IconStyleActivity extends ThemedActivity {
+    @Override
+    boolean nativeWallpaperPreview() {
+        return true;
+    }
+
+    private Slider roundness, fallbackScale, exponent, saturation, brightness, contrast;
+    private TextView saturationValue, brightnessValue, contrastValue;
+    private LinearLayout fallbackSection;
+    private TextView fallbackHeader;
+    private boolean fallbackExpanded = true;
+    private SlidingChoice continuous, filling;
+    private LinearLayout exponentControls;
+    private TextView exponentValue;
+    private LinearLayout fallbackControls;
+    private TextView fallbackValue;
+    private boolean fill;
     private TextView roundnessLabel;
     private int fillColor;
-    private Preview preview;
+    private String pack;
+    private TextView packValue;
+    private ImageView packIcon;
+    private WidgetSettingsActivity.Preview preview, secondPreview;
     private IconStyle original;
-    private ImageButton restore;
+    private Button restore;
     private boolean binding;
     @Override
     public void onCreate(Bundle state) {
@@ -30,75 +45,260 @@ public final class IconStyleActivity extends Activity {
         original = state == null
                 ? style
                 : new IconStyle(state.getInt("original-roundness"),
-                        state.getBoolean("original-fill"), state.getInt("original-color"));
+                        state.getBoolean("original-fill"), state.getInt("original-color"),
+                        state.getString("original-pack", ""), state.getInt("original-fallback-scale", 100),
+                        state.getBoolean("original-continuous", false), state.getInt("original-exponent", 40),
+                        state.getInt("original-saturation", 100), state.getInt("original-brightness", 100),
+                        state.getInt("original-contrast", 100));
+        fallbackExpanded = state == null || state.getBoolean("fallback-expanded", true);
         fillColor = style.fillColor;
+        pack = style.pack;
+        fill = style.fillBackground;
         LinearLayout root = Ui.screen(this), bar = Ui.toolbar(this, root, "图标样式", true);
-        restore = Ui.icon(this, R.drawable.ic_undo, "撤销更改",
-                v -> StyleRestore.show(this, "恢复图标样式", () -> bind(original), () -> bind(IconStyle.defaults())));
+        WallpaperStage.prepare(this, root);
+        bar.setBackgroundColor(Ui.color(this, R.color.page));
+        restore = StyleRestore.button(this,
+                () -> StyleRestore.show(this, "恢复图标样式", () -> bind(original), () -> bind(IconStyle.defaults())));
         restore.setTag("icon-style-save");
         bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout content = Ui.column(this);
+        scroll.addView(content);
+        LinearLayout hero = Ui.column(this);
+        hero.setTag("wallpaper-preview-stage");
+        hero.setPadding(Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 16));
+        content.addView(hero, new LinearLayout.LayoutParams(-1, -2));
+        preview = new WidgetSettingsActivity.Preview(this);
+        preview.setTag("icon-preview");
+        preview.layout = new WidgetPreferences(5, 2, 82, false);
+        preview.setWidget(0);
+        preview.theme = WidgetTheme.load(this, WidgetTheme.previewId(this));
+        preview.setSamples(0);
+        hero.addView(preview, new LinearLayout.LayoutParams(-1, -2));
+        Ui.space(hero, 16);
+        secondPreview = new WidgetSettingsActivity.Preview(this);
+        secondPreview.setTag("icon-preview-secondary");
+        secondPreview.layout = WidgetPreferences.defaults();
+        secondPreview.setWidget(0);
+        secondPreview.theme = WidgetTheme.load(this, WidgetTheme.previewId(this));
+        secondPreview.setSamples(preview.layout.capacity());
+        hero.addView(secondPreview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
-        body.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 20));
-        scroll.addView(body);
-        preview = new Preview(this);
-        body.addView(preview, new LinearLayout.LayoutParams(-1, Ui.dp(this, 104)));
+        body.setBackgroundColor(Ui.color(this, R.color.page));
+        body.setPadding(Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 24));
+        content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
+        LinearLayout packRow = new LinearLayout(this);
+        packRow.setGravity(Gravity.CENTER_VERTICAL);
+        packRow.setTag("icon-pack");
+        packRow.setMinimumHeight(Ui.dp(this, 52));
+        Ui.nativeTouch(packRow);
+        packRow.addView(Ui.text(this, "图标包", 14, R.color.ink), new LinearLayout.LayoutParams(0, -2, 1));
+        packIcon = new ImageView(this);
+        LinearLayout selectedPack = new LinearLayout(this);
+        selectedPack.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        selectedPack.addView(packIcon, new LinearLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 28)));
+        packValue = Ui.text(this, "", 14, R.color.muted);
+        packValue.setPadding(Ui.dp(this, 8), 0, 0, 0);
+        packValue.setMaxLines(2);
+        packValue.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        selectedPack.addView(packValue, new LinearLayout.LayoutParams(-2, -2));
+        packRow.addView(selectedPack, new LinearLayout.LayoutParams(0, -2, 2));
+        packValue.setGravity(Gravity.END);
+        packRow.setOnClickListener(v -> choosePack());
+        body.addView(packRow);
+        filling = new SlidingChoice(this, new String[]{"关", "白色", "自适应"}, "icon-fill-", index -> {
+            fill = index != 0;
+            fillColor = index == 1 ? android.graphics.Color.WHITE : 0;
+            changed();
+        });
+        filling.setTag("icon-fill-mode");
+        filling.addRow(body, "图标填充");
+        Ui.space(body, 16);
+        fallbackSection = Ui.column(this);
+        body.addView(fallbackSection);
+        fallbackHeader = Ui.text(this, "", 14, R.color.ink);
+        fallbackHeader.setTag("icon-fallback-toggle");
+        fallbackHeader.setGravity(Gravity.CENTER_VERTICAL);
+        fallbackHeader.setMinimumHeight(Ui.dp(this, 48));
+        Ui.nativeTouch(fallbackHeader);
+        fallbackHeader.setOnClickListener(v -> {
+            fallbackExpanded = !fallbackExpanded;
+            updateFallbackSection();
+        });
+        fallbackSection.addView(fallbackHeader, new LinearLayout.LayoutParams(-1, -2));
+        fallbackControls = Ui.column(this);
+        fallbackSection.addView(fallbackControls);
+        saturationValue = Ui.text(this, "", 13, R.color.muted);
+        saturationValue.setTag("icon-saturation-value");
+        saturation = new Slider(this);
+        saturation.setTag("icon-saturation");
+        saturation.setContentDescription("未适配图标饱和度");
+        saturation.setValueTo(200);
+        saturation.setStepSize(1);
+        saturation.setValue(style.saturation);
+        Ui.sliderRow(fallbackControls, "饱和度", saturation, saturationValue);
+
+        brightnessValue = Ui.text(this, "", 13, R.color.muted);
+        brightnessValue.setTag("icon-brightness-value");
+        brightness = new Slider(this);
+        brightness.setTag("icon-brightness");
+        brightness.setContentDescription("未适配图标明度");
+        brightness.setValueTo(200);
+        brightness.setStepSize(1);
+        brightness.setValue(style.brightness);
+        Ui.sliderRow(fallbackControls, "明度", brightness, brightnessValue);
+        contrastValue = Ui.text(this, "", 13, R.color.muted);
+        contrastValue.setTag("icon-contrast-value");
+        contrast = new Slider(this);
+        contrast.setTag("icon-contrast");
+        contrast.setContentDescription("未适配图标对比度");
+        contrast.setValueTo(200);
+        contrast.setStepSize(1);
+        contrast.setValue(style.contrast);
+        Ui.sliderRow(fallbackControls, "对比度", contrast, contrastValue);
+        fallbackValue = Ui.text(this, "", 14, R.color.ink);
+        fallbackScale = new Slider(this);
+        fallbackScale.setTag("icon-fallback-scale");
+        fallbackScale.setContentDescription("未适配图标缩放");
+        fallbackScale.setValueFrom(50);
+        fallbackScale.setValueTo(100);
+        fallbackScale.setStepSize(1);
+        fallbackScale.setTickVisible(false);
+        fallbackScale.setValue(style.fallbackScale);
+        Ui.sliderRow(fallbackControls, "缩放", fallbackScale, fallbackValue);
+        fallbackControls.addView(Ui.text(this, "仅调整图标包未覆盖的应用，颜色调节均以 100% 为原色", 12, R.color.muted));
+        Ui.space(fallbackControls, 16);
+        continuous = new SlidingChoice(this, new String[]{"普通圆角", "超椭圆"}, "icon-corner-", i -> changed());
+        continuous.setTag("icon-corner-mode");
+        continuous.select(style.continuous ? 1 : 0, false);
+        continuous.addRow(body, "圆角模式");
         Ui.space(body, 12);
-        body.addView(Ui.text(this, "调整立即生效，推荐、应用选择器与所有桌面组件共用。", 12, R.color.muted));
-        Ui.space(body, 24);
+        exponentControls = Ui.column(this);
+        exponentValue = Ui.text(this, "", 14, R.color.ink);
+        exponent = new Slider(this);
+        exponent.setTag("icon-exponent");
+        exponent.setContentDescription("超椭圆参数");
+        exponent.setValueFrom(2);
+        exponent.setValueTo(8);
+        exponent.setStepSize(.1f);
+        exponent.setTickVisible(false);
+        exponent.setValue(style.exponent / 10f);
+        Ui.sliderRow(exponentControls, "超椭圆参数", exponent, exponentValue);
+        exponentControls.addView(Ui.text(this, "超椭圆轮廓：参数越小越圆，越大越方", 12, R.color.muted));
+        body.addView(exponentControls);
         roundnessLabel = Ui.text(this, "", 14, R.color.ink);
-        body.addView(roundnessLabel);
-        roundness = new SeekBar(this);
+        roundness = new Slider(this);
         roundness.setTag("icon-roundness");
         roundness.setContentDescription("图标圆角");
-        roundness.setMax(100);
-        roundness.setProgress(style.roundness);
-        body.addView(roundness, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-        body.addView(Ui.text(this, "0% 为直角，100% 为圆形。", 12, R.color.muted));
+        roundness.setValueTo(100);
+        roundness.setStepSize(1);
+        roundness.setTickVisible(false);
+        roundness.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
+        roundness.setValue(style.roundness);
+        Ui.sliderRow(body, "图标圆角", roundness, roundnessLabel);
         Ui.space(body, 16);
-        LinearLayout row = new LinearLayout(this);
-        row.setTag("icon-fill-row");
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(Ui.dp(this, 56));
-        TextView label = Ui.text(this, "填充图标背景", 14, R.color.ink);
-        row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
-        color = Ui.icon(this, R.drawable.ic_contrast, "图标背景色", v -> IconColorDialog.show(this, fillColor, value -> {
-            fillColor = value;
-            changed();
-        }));
-        color.setTag("icon-fill-color");
-        color.setImageTintList(null);
-        row.addView(color);
-        fill = new Switch(this);
-        fill.setId(View.generateViewId());
-        fill.setTag("icon-fill-background");
-        fill.setContentDescription("填充图标背景");
-        fill.setChecked(style.fillBackground);
-        fill.setMinimumHeight(Ui.dp(this, 48));
-        fill.setMinimumWidth(Ui.dp(this, 48));
-        label.setLabelFor(fill.getId());
-        label.setOnClickListener(v -> fill.toggle());
-        row.addView(fill, new LinearLayout.LayoutParams(-2, Ui.dp(this, 48)));
-        body.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(Ui.text(this, "仅填充透明区域。自适应颜色沿边缘延续渐变，复杂图标使用系统深浅底色；也可点按自选颜色。", 12, R.color.muted));
-        fill.setOnCheckedChangeListener((v, checked) -> changed());
-        roundness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar s, int value, boolean user) {
-                changed();
-            }
-
-            public void onStartTrackingTouch(SeekBar s) {
-            }
-
-            public void onStopTrackingTouch(SeekBar s) {
-            }
-        });
+        contrast.addOnChangeListener((slider, value, user) -> changed());
+        brightness.addOnChangeListener((slider, value, user) -> changed());
+        saturation.addOnChangeListener((slider, value, user) -> changed());
+        fallbackScale.addOnChangeListener((slider, value, user) -> changed());
+        roundness.addOnChangeListener((slider, value, user) -> changed());
+        exponent.addOnChangeListener((slider, value, user) -> changed());
         changed();
     }
 
+    private void updateFallbackSection() {
+        fallbackSection.setVisibility(pack.isEmpty() ? View.GONE : View.VISIBLE);
+        fallbackControls.setVisibility(fallbackExpanded ? View.VISIBLE : View.GONE);
+        fallbackHeader.setText(fallbackExpanded ? "未适配图标样式    ▾" : "未适配图标样式    ▸");
+        fallbackHeader.setContentDescription("未适配图标样式，" + (fallbackExpanded ? "已展开" : "已折叠"));
+    }
+
+    private void choosePack() {
+        AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("图标包")
+                .setMessage("正在读取已安装图标包…").setNegativeButton("取消", null).show();
+        Repository.WORK.execute(() -> {
+            java.util.List<IconPacks.Pack> packs = IconPacks.installed(getApplicationContext());
+            packs.add(0, new IconPacks.Pack("", "应用原图标"));
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || !dialog.isShowing())
+                    return;
+                dialog.dismiss();
+                final int selected;
+                int match = 0;
+                for (int i = 1; i < packs.size(); i++)
+                    if (packs.get(i).pkg.equals(pack))
+                        match = i;
+                selected = match;
+                BaseAdapter adapter = new BaseAdapter() {
+                    public int getCount() {
+                        return packs.size();
+                    }
+
+                    public Object getItem(int position) {
+                        return packs.get(position).label;
+                    }
+
+                    public long getItemId(int position) {
+                        return position;
+                    }
+
+                    public View getView(int position, View recycled, ViewGroup parent) {
+                        LinearLayout row = new LinearLayout(IconStyleActivity.this);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding(Ui.dp(IconStyleActivity.this, 20), Ui.dp(IconStyleActivity.this, 8),
+                                Ui.dp(IconStyleActivity.this, 12), Ui.dp(IconStyleActivity.this, 8));
+                        row.setMinimumHeight(Ui.dp(IconStyleActivity.this, 60));
+                        ImageView icon = new ImageView(IconStyleActivity.this);
+                        icon.setImageDrawable(packIcon(packs.get(position).pkg, false));
+                        row.addView(icon, new LinearLayout.LayoutParams(Ui.dp(IconStyleActivity.this, 32),
+                                Ui.dp(IconStyleActivity.this, 32)));
+                        TextView label = Ui.text(IconStyleActivity.this, packs.get(position).label, 16, R.color.ink);
+                        label.setPadding(Ui.dp(IconStyleActivity.this, 12), 0, Ui.dp(IconStyleActivity.this, 8), 0);
+                        row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+                        RadioButton radio = new com.google.android.material.radiobutton.MaterialRadioButton(
+                                IconStyleActivity.this);
+                        radio.setChecked(position == selected);
+                        radio.setClickable(false);
+                        radio.setFocusable(false);
+                        radio.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                        row.addView(radio);
+                        return row;
+                    }
+                };
+                AlertDialog.Builder picker = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                        .setTitle("图标包")
+                        .setAdapter(adapter, (d, which) -> {
+                            binding = true;
+                            pack = packs.get(which).pkg;
+                            binding = false;
+                            changed();
+                            d.dismiss();
+                        }).setNegativeButton("取消", null);
+                picker.show();
+            });
+        });
+    }
+
+    private Drawable packIcon(String pkg, boolean filled) {
+        if (!pkg.isEmpty()) {
+            try {
+                return getPackageManager().getApplicationIcon(pkg);
+            } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+            }
+        }
+        return new android.graphics.drawable.BitmapDrawable(getResources(),
+                WidgetIcons.style(this,
+                        WidgetIcons.source(
+                                androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_app)),
+                        new IconStyle(35, filled, fillColor)));
+    }
+
     private IconStyle input() {
-        return new IconStyle(roundness.getProgress(), fill.isChecked(), fillColor);
+        return new IconStyle((int) roundness.getValue(), fill, fillColor, pack, Math.round(fallbackScale.getValue()),
+                continuous.selection() == 1, Math.round(exponent.getValue() * 10), Math.round(saturation.getValue()),
+                Math.round(brightness.getValue()), Math.round(contrast.getValue()));
     }
 
     private void changed() {
@@ -110,23 +310,35 @@ public final class IconStyleActivity extends Activity {
             WidgetAppearance.request(this);
         }
         StyleRestore.update(restore, !style.sameAs(original));
-        roundnessLabel.setText(getString(R.string.widget_roundness, style.roundness));
-        color.setImageDrawable(new ColorChip(fillColor, getColor(R.color.muted), Ui.dp(this, 24)));
-        color.setEnabled(style.fillBackground);
-        color.setAlpha(style.fillBackground ? 1f : .4f);
-        String description = fillColor == 0
-                ? "图标背景色，自适应颜色"
-                : String.format(Locale.ROOT, "图标背景色，#%06X", fillColor & 0xffffff);
-        color.setContentDescription(description);
-        color.setTooltipText(description);
+        updateFallbackSection();
+        contrastValue.setText(getString(R.string.widget_scale, style.contrast));
+        brightnessValue.setText(getString(R.string.widget_scale, style.brightness));
+        saturationValue.setText(getString(R.string.widget_scale, style.saturation));
+        fallbackValue.setText(getString(R.string.widget_scale, style.fallbackScale));
+        ((View) roundness.getParent()).setVisibility(style.continuous ? View.GONE : View.VISIBLE);
+        exponentControls.setVisibility(style.continuous ? View.VISIBLE : View.GONE);
+        exponentValue.setText(String.format(java.util.Locale.getDefault(), "%.1f", style.exponent / 10f));
+        roundnessLabel.setText(getString(R.string.widget_scale, style.roundness));
+        filling.select(!style.fillBackground ? 0 : style.fillColor == android.graphics.Color.WHITE ? 1 : 2, true);
+        ((View) filling.getParent()).setVisibility(pack.isEmpty() ? View.VISIBLE : View.GONE);
+        packValue.setText(IconPacks.label(this, pack));
+        packIcon.setImageDrawable(packIcon(pack, style.fillBackground));
         preview.setStyle(style);
+        secondPreview.setStyle(style);
     }
 
     private void bind(IconStyle style) {
         binding = true;
         fillColor = style.fillColor;
-        roundness.setProgress(style.roundness);
-        fill.setChecked(style.fillBackground);
+        pack = style.pack;
+        fill = style.fillBackground;
+        continuous.select(style.continuous ? 1 : 0, true);
+        contrast.setValue(style.contrast);
+        brightness.setValue(style.brightness);
+        saturation.setValue(style.saturation);
+        exponent.setValue(style.exponent / 10f);
+        roundness.setValue(style.roundness);
+        fallbackScale.setValue(style.fallbackScale);
         binding = false;
         changed();
     }
@@ -142,131 +354,14 @@ public final class IconStyleActivity extends Activity {
         out.putInt("original-roundness", original.roundness);
         out.putBoolean("original-fill", original.fillBackground);
         out.putInt("original-color", original.fillColor);
+        out.putString("original-pack", original.pack);
+        out.putInt("original-fallback-scale", original.fallbackScale);
+        out.putBoolean("original-continuous", original.continuous);
+        out.putInt("original-exponent", original.exponent);
+        out.putInt("original-saturation", original.saturation);
+        out.putInt("original-brightness", original.brightness);
+        out.putInt("original-contrast", original.contrast);
+        out.putBoolean("fallback-expanded", fallbackExpanded);
         super.onSaveInstanceState(out);
-    }
-    private static final class ColorChip extends Drawable {
-        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final int color, stroke, size;
-        ColorChip(int color, int stroke, int size) {
-            this.color = color;
-            this.stroke = stroke;
-            this.size = size;
-        }
-
-        @Override
-        public void draw(Canvas canvas) {
-            Rect b = getBounds();
-            float size = Math.min(b.width(), b.height()), radius = size * .44f, cx = b.exactCenterX(),
-                    cy = b.exactCenterY();
-            RectF circle = new RectF(cx - radius, cy - radius, cx + radius, cy + radius);
-            paint.setStyle(Paint.Style.FILL);
-            if (color == 0) {
-                int[] colors = {0xff5681c7, 0xff3a8872, 0xffcf8653};
-                for (int i = 0; i < colors.length; i++) {
-                    paint.setColor(colors[i]);
-                    canvas.drawArc(circle, -90 + i * 120, 120, true, paint);
-                }
-            } else {
-                paint.setColor(color);
-                canvas.drawOval(circle, paint);
-            }
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(Math.max(1, size / 24));
-            paint.setColor(stroke);
-            canvas.drawOval(circle, paint);
-            paint.setStyle(Paint.Style.FILL);
-        }
-
-        @Override
-        public int getIntrinsicWidth() {
-            return size;
-        }
-
-        @Override
-        public int getIntrinsicHeight() {
-            return size;
-        }
-
-        @Override
-        public void setAlpha(int alpha) {
-            paint.setAlpha(alpha);
-        }
-
-        @Override
-        public void setColorFilter(ColorFilter filter) {
-            paint.setColorFilter(filter);
-        }
-
-        @Override
-        public int getOpacity() {
-            return PixelFormat.TRANSLUCENT;
-        }
-    }
-    private static final class Preview extends View {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        private final RectF destination = new RectF();
-        private final Bitmap[] sources = new Bitmap[3], icons = new Bitmap[3];
-        Preview(Context c) {
-            super(c);
-            setContentDescription("图标样式预览");
-            int[] colors = {0xff3a8872, 0xff5681c7, 0xffcf8653};
-            for (int i = 0; i < 3; i++) {
-                Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bitmap);
-                paint.setColor(colors[i]);
-                if (i == 1)
-                    paint.setShader(
-                            new LinearGradient(16, 16, 112, 112, 0xff559bc9, 0xff7152b8, Shader.TileMode.CLAMP));
-                else if (i == 2)
-                    paint.setShader(new LinearGradient(0, 18, 0, 110, 0xffeab569, 0xffbb6658, Shader.TileMode.CLAMP));
-                if (i == 0)
-                    canvas.drawRect(0, 0, 128, 128, paint);
-                else if (i == 1)
-                    canvas.drawCircle(64, 64, 54, paint);
-                else
-                    canvas.drawRoundRect(12, 18, 116, 110, 18, 18, paint);
-                paint.setShader(null);
-                paint.setColor(Color.WHITE);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(7);
-                paint.setStrokeCap(Paint.Cap.ROUND);
-                if (i == 0) {
-                    canvas.drawLine(39, 68, 56, 84, paint);
-                    canvas.drawLine(56, 84, 90, 45, paint);
-                } else if (i == 1) {
-                    canvas.drawCircle(64, 64, 31, paint);
-                    canvas.drawLine(64, 43, 64, 64, paint);
-                    canvas.drawLine(64, 64, 80, 74, paint);
-                } else {
-                    canvas.drawLine(40, 49, 88, 49, paint);
-                    canvas.drawLine(40, 65, 88, 65, paint);
-                    canvas.drawLine(40, 81, 70, 81, paint);
-                }
-                paint.setStyle(Paint.Style.FILL);
-                sources[i] = bitmap;
-            }
-        }
-
-        void setStyle(IconStyle style) {
-            for (int i = 0; i < 3; i++)
-                icons[i] = WidgetIcons.style(getContext(), sources[i], style);
-            invalidate();
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            paint.setColor(getContext().getColor(R.color.surface));
-            float corner = Ui.dp(getContext(), 16);
-            canvas.drawRoundRect(0, 0, getWidth(), getHeight(), corner, corner, paint);
-            float side = Ui.dp(getContext(), 48), gap = Math.min(Ui.dp(getContext(), 84), getWidth() / 3f),
-                    cy = getHeight() / 2f;
-            for (int i = 0; i < 3; i++)
-                if (icons[i] != null) {
-                    float cx = getWidth() / 2f + (i - 1) * gap;
-                    destination.set(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2);
-                    canvas.drawBitmap(icons[i], null, destination, paint);
-                }
-        }
     }
 }

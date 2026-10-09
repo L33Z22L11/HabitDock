@@ -1,5 +1,5 @@
 import dev.habitdock.Predictor;
-import dev.habitdock.PrivacyPolicy;
+import dev.habitdock.AppVisibility;
 import java.time.*;
 import java.util.*;
 
@@ -26,6 +26,30 @@ public class PredictorTest {
     }
 
     public static void main(String[] args) {
+        List<Predictor.Launch> precise = new ArrayList<>();
+        for (int day = 1; day <= 3; day++)
+            add(precise, "work", LocalDate.of(2026, 9, 19).minusDays(day), 10, 0);
+        precise.add(new Predictor.Launch("work", NOW + 1));
+        precise.add(new Predictor.Launch("work", NOW - 61 * Predictor.DAY));
+        precise.add(new Predictor.Launch("excluded", NOW - Predictor.DAY));
+        Predictor.Prediction frequency = rank(precise, "2026-09-21T12:00").get(0);
+        check(frequency.detailReason.equals("近4天打开3次"), "detailed count uses only the observed valid window");
+        check(frequency.reason.equals("最近经常打开"), "detailed explanations preserve existing coarse reasons");
+        precise.clear();
+        for (int day = 1; day <= 6; day++)
+            add(precise, "work", LocalDate.of(2026, 9, 19).minusDays(day), 15, 20);
+        check(rank(precise, "2026-09-21T15:00").get(0).detailReason.equals("15:00–16:00常用"),
+                "detailed hour explains repeated use in the target hour");
+        precise.clear();
+        for (int day : new int[]{14, 7, 0})
+            add(precise, "work", LocalDate.of(2026, 9, 14).minusDays(day), 15, 20);
+        check(rank(precise, "2026-09-21T15:00").get(0).detailReason.equals("周一 15:00常用"),
+                "weekday and hour explanation requires repeated joint evidence");
+        precise.clear();
+        precise.add(new Predictor.Launch("work", NOW - Predictor.DAY));
+        check(rank(precise, "2026-09-21T12:00").get(0).detailReason.equals("刚开始了解你的习惯"),
+                "sparse records never invent a precise usage habit");
+
         List<Predictor.Launch> events = new ArrayList<>();
         for (int i = 1; i <= 21; i++) {
             LocalDate day = LocalDate.of(2026, 9, 19).minusDays(i);
@@ -71,11 +95,12 @@ public class PredictorTest {
         check(Predictor.rank(events, NOW, at("2026-09-21T08:10"), ZoneId.of("UTC"), Set.of("video", "commute"))
                 .get(0).pkg.equals("commute"), "timezone consistency");
         Set<String> installed = Set.of("work", "video", "new-app");
-        check(!PrivacyPolicy.eligible(installed, Set.of("video")).contains("video"), "private app excluded");
-        check(PrivacyPolicy.eligible(installed, Set.of()).equals(installed), "all ordinary apps eligible by default");
-        check(PrivacyPolicy.eligible(installed, installed).isEmpty(), "all apps may be private");
-        check(PrivacyPolicy.eligible(installed, Set.of("uninstalled")).equals(installed),
-                "stale privacy entries harmless");
+        check(!AppVisibility.eligible(installed, Set.of("video")).contains("video"),
+                "hidden app excluded from presentation");
+        check(AppVisibility.eligible(installed, Set.of()).equals(installed), "all ordinary apps eligible by default");
+        check(AppVisibility.eligible(installed, installed).isEmpty(), "all apps may be hidden");
+        check(AppVisibility.eligible(installed, Set.of("uninstalled")).equals(installed),
+                "stale hidden entries harmless");
         System.out.println("PASS: " + checks + " prediction scenarios");
     }
 }

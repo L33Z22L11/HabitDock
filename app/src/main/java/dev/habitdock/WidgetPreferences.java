@@ -36,7 +36,7 @@ final class WidgetPreferences {
         return desktopColumns == 2 ? COMPACT_DEFAULT : AppWidgetManager.INVALID_APPWIDGET_ID;
     }
 
-    private static int templateId(Context c, int id) {
+    static int templateId(Context c, int id) {
         if (id <= 0)
             return id;
         android.appwidget.AppWidgetProviderInfo info = AppWidgetManager.getInstance(c).getAppWidgetInfo(id);
@@ -54,7 +54,7 @@ final class WidgetPreferences {
                 && actions == other.actions && moreTime == other.moreTime;
     }
 
-    private static String key(int id) {
+    static String key(int id) {
         if (id == COMPACT_DEFAULT)
             return "widget.compact.default.";
         return id == AppWidgetManager.INVALID_APPWIDGET_ID ? "widget.default." : "widget." + id + ".";
@@ -86,6 +86,7 @@ final class WidgetPreferences {
         synchronized (WidgetPreferences.class) {
             if (!Repository.prefs(c).contains(key(id) + "more_time"))
                 load(c, id).save(c, id);
+            WidgetTheme.ensure(c, id);
         }
     }
 
@@ -94,7 +95,7 @@ final class WidgetPreferences {
         String prefix = key(id);
         SharedPreferences.Editor edit = Repository.prefs(c).edit();
         for (String name : new String[]{"columns", "rows", "percent", "more", "actions", "roundness", "fill_background",
-                "more_time", "fill_color", "name"})
+                "more_time", "fill_color", "name", "host", "confirmed", "hidden", "theme", "transparency", "color"})
             edit.remove(prefix + name);
         edit.apply();
     }

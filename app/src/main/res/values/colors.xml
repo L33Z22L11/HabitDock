@@ -1,4 +1,5 @@
 <resources>
+    <color name="widget_device_ink">#244E43</color>
     <color name="widget_icon_background">#F5F6F5</color>
     <color name="page">#F3F5F4</color><color name="surface">#FFFFFF</color>
     <color name="ink">#182421</color><color name="muted">#61726C</color>

@@ -58,7 +58,10 @@ final class UsageStore extends SQLiteOpenHelper {
             return;
         SQLiteDatabase db = getWritableDatabase();
         long floor = Math.max(now - 60 * Predictor.DAY, value(db, "reset", 0));
-        long from = Math.max(floor, Math.min(now, value(db, "cursor", floor)) - 300_000);
+        // Once after upgrading, include any still-available history that the old
+        // hidden-app policy skipped. A user reset remains the lower bound.
+        long cursor = value(db, "hidden_learning", 0) == 1 ? value(db, "cursor", floor) : floor;
+        long from = Math.max(floor, Math.min(now, cursor) - 300_000);
         UsageStatsManager manager = context.getSystemService(UsageStatsManager.class);
         Set<String> eligible = Repository.eligible(context, Repository.apps(context).keySet());
         if (eligible.isEmpty())
@@ -85,6 +88,7 @@ final class UsageStore extends SQLiteOpenHelper {
             }
             db.delete("launches", "stamp<? OR stamp>?", new String[]{Long.toString(floor), Long.toString(now)});
             put(db, "cursor", now);
+            put(db, "hidden_learning", 1);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -127,7 +131,7 @@ final class UsageStore extends SQLiteOpenHelper {
         }
     }
 
-    void enforcePrivacy(Set<String> eligible) {
+    void retainInstalled(Set<String> eligible) {
         SQLiteDatabase db = getWritableDatabase();
         List<String> remove = new ArrayList<>();
         try (Cursor cursor = db.rawQuery("SELECT DISTINCT pkg FROM launches", null)) {
@@ -139,9 +143,6 @@ final class UsageStore extends SQLiteOpenHelper {
         try {
             for (String pkg : remove)
                 db.delete("launches", "pkg=?", new String[]{pkg});
-            // Reconsider history after removing privacy exclusions, respecting a reset
-            // cutoff.
-            db.delete("meta", "key=?", new String[]{"cursor"});
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();

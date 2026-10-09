@@ -2,24 +2,36 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Only requested by the explicit "read current wallpaper" action. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
+        <intent><action android:name="org.adw.launcher.THEMES" /></intent>
+        <intent><action android:name="com.gau.go.launcherex.theme" /></intent>
+        <intent><action android:name="com.novalauncher.THEME" /></intent>
+        <intent><action android:name="com.anddoes.launcher.THEME" /></intent>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="org.adw.launcher.THEMES" /></intent>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="com.gau.go.launcherex.theme" /></intent>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="com.novalauncher.THEME" /></intent>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="com.anddoes.launcher.THEME" /></intent>
     </queries>
     <application android:name=".HabitApplication" android:label="@string/app_name" android:icon="@drawable/ic_app" android:theme="@style/AppTheme"
-        android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
+        android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.apkfiles" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/apk_share_paths" />
         </provider>
-        <activity android:name=".MainActivity" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:windowSoftInputMode="adjustResize" android:exported="true" android:launchMode="singleTask">
+        <activity android:name=".MainActivity" android:theme="@style/MainLaunchTheme" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:windowSoftInputMode="adjustResize" android:exported="true" android:launchMode="singleTask">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
-        <activity android:name=".WidgetSettingsActivity" android:exported="true">
+        <activity android:name=".WidgetSettingsActivity" android:exported="true" android:theme="@style/WidgetWallpaperTheme">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
         </activity>
         <activity android:name=".AppPickerActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".IconStyleActivity" android:exported="false" />
-        <activity-alias android:name=".SettingsActivity" android:targetActivity=".MainActivity" android:exported="false" />
+        <activity android:name=".MainStyleActivity" android:exported="false" android:theme="@style/WidgetWallpaperTheme" />
+        <activity android:name=".IconStyleActivity" android:exported="false" android:theme="@style/WidgetWallpaperTheme" />
+        <activity android:name=".SettingsActivity" android:theme="@style/WallpaperSurfaceTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <!-- Existing widget PendingIntents from older versions also open the shared screen. -->
         <activity-alias android:name=".MoreActivity" android:targetActivity=".MainActivity" android:exported="false" />
         <receiver android:name=".HabitWidget" android:exported="false" android:label="@string/widget_name">

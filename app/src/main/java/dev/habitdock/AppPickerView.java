@@ -1,7 +1,6 @@
 package dev.habitdock;
 
 import android.app.*;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.*;
 import android.view.*;
@@ -14,13 +13,18 @@ import java.util.*;
 final class AppPickerView extends LinearLayout {
     private final Activity activity;
     private final Set<String> selected = new HashSet<>();
+    private final Set<String> orderSelected = new HashSet<>();
     private List<Repository.App> apps = new ArrayList<>(), visible = new ArrayList<>();
-    private String mode;
-    private EditText search;
-    private TextView count, empty;
-    private BaseAdapter adapter;
+    private final String mode;
+    private final EditText search;
+    private final TextView empty;
+    private HeaderSearch headerSearch;
+    private boolean restoreSearch;
+    private java.util.function.IntConsumer countChanged = count -> {
+    };
+    private final BaseAdapter adapter;
     private boolean loaded;
-    private int columns;
+    private final int columns;
     AppPickerView(Activity host, String selectionMode, Bundle state) {
         super(host);
         activity = host;
@@ -28,20 +32,14 @@ final class AppPickerView extends LinearLayout {
         setOrientation(VERTICAL);
         setFocusableInTouchMode(true);
         selected.addAll(Repository.selection(activity, mode));
+        java.util.ArrayList<String> savedOrder = state == null ? null : state.getStringArrayList("order-selected");
+        orderSelected.addAll(savedOrder == null ? selected : savedOrder);
         columns = getResources().getConfiguration().fontScale > 1.35f ? 1 : 2;
         LinearLayout root = this;
-        LinearLayout searchRow = new LinearLayout(activity);
-        searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        searchRow.setBackground(Ui.shape(activity, R.color.surface, 8));
-        ImageView magnifier = new ImageView(activity);
-        magnifier.setImageResource(R.drawable.ic_search);
-        magnifier.setImageTintList(android.content.res.ColorStateList.valueOf(activity.getColor(R.color.muted)));
-        magnifier.setPadding(Ui.dp(activity, 12), 0, Ui.dp(activity, 8), 0);
-        searchRow.addView(magnifier, new LinearLayout.LayoutParams(Ui.dp(activity, 40), Ui.dp(activity, 24)));
         search = new EditText(activity);
         search.setTag("search");
-        search.setTextColor(activity.getColor(R.color.ink));
-        search.setHintTextColor(activity.getColor(R.color.muted));
+        search.setTextColor(Ui.color(activity, R.color.ink));
+        search.setHintTextColor(Ui.color(activity, R.color.muted));
         search.setHint(R.string.search_apps);
         search.setTextSize(14);
         search.setSingleLine(true);
@@ -50,17 +48,6 @@ final class AppPickerView extends LinearLayout {
         search.setImeOptions(EditorInfo.IME_ACTION_DONE);
         search.setInputType(
                 android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        searchRow.addView(search, new LinearLayout.LayoutParams(0, Ui.dp(activity, 48), 1));
-        ImageButton clear = Ui.icon(activity, R.drawable.ic_close, "清除搜索", v -> search.setText(""));
-        clear.setVisibility(View.INVISIBLE);
-        searchRow.addView(clear);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, Ui.dp(activity, 48));
-        searchParams.setMargins(Ui.dp(activity, 12), Ui.dp(activity, 2), Ui.dp(activity, 12), Ui.dp(activity, 4));
-        root.addView(searchRow, searchParams);
-        count = Ui.text(activity, "正在加载…", 12, R.color.muted);
-        count.setTag("count");
-        count.setPadding(Ui.dp(activity, 16), Ui.dp(activity, 6), Ui.dp(activity, 16), Ui.dp(activity, 8));
-        root.addView(count);
         FrameLayout content = new FrameLayout(activity);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         ListView list = new ListView(activity);
@@ -128,13 +115,12 @@ final class AppPickerView extends LinearLayout {
         content.addView(empty, new FrameLayout.LayoutParams(-1, -1));
         if (state != null)
             search.setText(state.getString("query", ""));
-        clear.setVisibility(search.length() == 0 ? View.INVISIBLE : View.VISIBLE);
+        restoreSearch = state != null && state.getBoolean("search-open", search.length() > 0);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int d) {
             }
 
             public void onTextChanged(CharSequence s, int a, int b, int d) {
-                clear.setVisibility(s.length() == 0 ? View.INVISIBLE : View.VISIBLE);
                 filter();
                 list.setSelection(0);
             }
@@ -164,8 +150,7 @@ final class AppPickerView extends LinearLayout {
             } catch (RuntimeException e) {
                 activity.runOnUiThread(() -> {
                     if (!activity.isDestroyed()) {
-                        count.setText("应用列表读取失败");
-                        empty.setText("请返回后重新打开");
+                        empty.setText("应用列表读取失败，请返回后重试");
                     }
                 });
             }
@@ -183,36 +168,50 @@ final class AppPickerView extends LinearLayout {
             Repository.prefs(activity).edit().putStringSet(mode, new HashSet<>(selected)).apply();
             Repository.selectionChanged(activity.getApplicationContext());
         }
-        filter();
+        updateCount();
     }
 
     private void filter() {
         if (!loaded)
             return;
-        visible = AppCatalog.filter(apps, selected, search.getText().toString());
+        visible = AppCatalog.filter(apps, orderSelected, search.getText().toString());
         adapter.notifyDataSetChanged();
-        count.setText(search.length() > 0
-                ? activity.getString(R.string.picker_search_count, selected.size(), visible.size())
-                : activity.getString(R.string.picker_count, selected.size()));
+        updateCount();
         empty.setText(R.string.no_search_results);
         empty.setVisibility(visible.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
     void saveState(Bundle out) {
+        out.putStringArrayList("order-selected", new java.util.ArrayList<>(orderSelected));
         out.putString("query", search.getText().toString());
+        out.putBoolean("search-open", searching());
     }
 
-    void refreshSelection() {
-        selected.clear();
-        selected.addAll(Repository.selection(activity, mode));
-        filter();
+    void setCountListener(java.util.function.IntConsumer listener) {
+        countChanged = listener;
+        updateCount();
     }
 
-    void showInfo() {
-        new AlertDialog.Builder(activity).setTitle(mode.equals("hidden") ? "不推荐的应用" : "固定应用")
-                .setMessage(mode.equals("hidden")
-                        ? "勾选立即生效：不推荐、不学习，并清除已有本地使用记录。\n\n桌面已有或不想展示的应用都可以排除。取消勾选后恢复学习。"
-                        : "固定数量不限。不推荐的应用不会出现在这里。修改立即生效。")
-                .setPositiveButton("知道了", null).show();
+    private void updateCount() {
+        countChanged.accept(selected.size());
     }
+
+    void attachSearch(LinearLayout toolbar, ViewGroup actions, Runnable changed) {
+        headerSearch = new HeaderSearch(activity, toolbar, actions, search, changed);
+        if (restoreSearch || search.length() > 0)
+            headerSearch.open(false);
+        restoreSearch = false;
+    }
+
+    boolean searching() {
+        return headerSearch != null && headerSearch.expanded();
+    }
+
+    boolean closeSearch() {
+        if (!searching())
+            return false;
+        headerSearch.close(true);
+        return true;
+    }
+
 }

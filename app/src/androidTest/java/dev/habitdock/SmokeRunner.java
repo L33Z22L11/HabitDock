@@ -116,17 +116,22 @@ public final class SmokeRunner extends Instrumentation {
                 check(store.read(now).size() == 14, "persisted history readable");
                 Repository.prefs(c).edit().putStringSet("hidden", Set.of(secret)).putStringSet("pinned", Set.of(secret))
                         .commit();
-                store.enforcePrivacy(Repository.eligible(c, Repository.apps(c).keySet()));
-                check(store.read(now).stream().noneMatch(e -> e.pkg.equals(secret)),
-                        "privacy erases old local samples");
+                store.retainInstalled(Repository.eligible(c, Repository.apps(c).keySet()));
+                check(store.read(now).stream().filter(e -> e.pkg.equals(secret)).count() == 7,
+                        "hiding preserves existing learning history");
+                check(Repository.load(c, now, false).ranked.stream().anyMatch(p -> p.pkg.equals(secret)),
+                        "hidden apps retain their normal place in the full ranking");
                 check(Repository.load(c, now, false).predictions.stream().noneMatch(p -> p.pkg.equals(secret)),
-                        "privacy overrides pinned apps");
+                        "display exclusions override pins in normal recommendations");
                 store.sync(now);
-                check(store.read(now).stream().noneMatch(e -> e.pkg.equals(secret)), "privacy blocks history reimport");
+                check(store.read(now).stream().anyMatch(e -> e.pkg.equals(secret)),
+                        "hidden apps remain eligible for collection");
                 Repository.prefs(c).edit().putStringSet("hidden", new HashSet<>(installed)).commit();
-                store.enforcePrivacy(Set.of());
-                check(store.read(now).isEmpty(), "privacy exclusions purge all selected history");
-                check(Repository.load(c, now, false).predictions.isEmpty(), "private apps never used as fallback");
+                check(Repository.load(c, now, false).predictions.isEmpty(),
+                        "hidden apps never used as visible fallback");
+                check(!store.read(now).isEmpty(), "hiding every app still preserves learning");
+                store.retainInstalled(Set.of());
+                check(store.read(now).isEmpty(), "uninstalled apps are removed from local history");
                 Repository.prefs(c).edit().clear().commit();
                 store.reset(now);
                 store.sync(now + 1);
@@ -327,22 +332,23 @@ public final class SmokeRunner extends Instrumentation {
                     .putInt("widget.default.roundness", 75).putBoolean("widget.default.fill_background", true)
                     .putInt("widget.default.fill_color", 0xffe2c4dd).commit();
             IconStyle migrated = IconStyle.load(c);
-            check(migrated.roundness == 75 && migrated.fillBackground && migrated.fillColor == 0xffe2c4dd,
-                    "upgrade migrates legacy appearance with safe fallback for a removed widget");
-            check(WidgetIcons.style(light, edges, migrated).getPixel(64, 5) == 0xffe2c4dd
-                    && WidgetIcons.style(dark, edges, migrated).getPixel(64, 5) == 0xffe2c4dd,
-                    "custom global fill persists across themes");
+            check(migrated.roundness == 75 && migrated.fillBackground && migrated.fillColor == 0,
+                    "upgrade keeps shape and migrates removed custom fill to adaptive");
+            check(WidgetIcons.style(light, edges, migrated).getPixel(64, 5) == WidgetIcons
+                    .style(light, edges, new IconStyle(75, true, 0)).getPixel(64, 5)
+                    && IconStyle.load(c).sameAs(migrated),
+                    "adaptive migration renders consistently and is stable on reload");
             check(!migrated.cacheKey(c).equals(new IconStyle(75, true, 0xffabcdef).cacheKey(c)),
                     "bitmap cache distinguishes custom colors");
             IconStyle automatic = new IconStyle(40, true, 0);
             check(!automatic.cacheKey(light).equals(automatic.cacheKey(dark)),
                     "theme-specific source icons have separate cache entries in adaptive mode");
             long stampBeforeStyle = RefreshPolicy.last(c);
-            new IconStyle(100, true, 0xffe2c4dd).save(c);
+            new IconStyle(100, true, android.graphics.Color.WHITE).save(c);
             Repository.prefs(c).edit().putInt("widget.default.roundness", 0).putInt("recommendation_style_widget", 0)
                     .commit();
             original.save(c, 101);
-            check(IconStyle.load(c).roundness == 100 && IconStyle.load(c).fillColor == 0xffe2c4dd,
+            check(IconStyle.load(c).roundness == 100 && IconStyle.load(c).fillColor == android.graphics.Color.WHITE,
                     "global appearance survives widget layout saves and is migrated only once");
             check(stampBeforeStyle == RefreshPolicy.last(c), "saving appearance does not advance recommendation clock");
             WidgetPreferences.ensure(c, 103);

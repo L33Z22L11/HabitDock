@@ -28,7 +28,7 @@ public class HabitWidget extends AppWidgetProvider {
         return false;
     }
 
-    static int[] ids(Context context) {
+    static int[] boundIds(Context context) {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
         List<Integer> active = new ArrayList<>();
         for (WidgetSizes.Size size : WidgetSizes.ALL)
@@ -39,6 +39,10 @@ public class HabitWidget extends AppWidgetProvider {
         for (int i = 0; i < ids.length; i++)
             ids[i] = active.get(i);
         return ids;
+    }
+
+    static int[] ids(Context context) {
+        return Arrays.stream(boundIds(context)).filter(id -> WidgetInstances.active(context, id)).toArray();
     }
 
     static void refreshIfDue(Context c) {
@@ -113,6 +117,8 @@ public class HabitWidget extends AppWidgetProvider {
             views.setViewVisibility(ROWS[i], i < 2 ? View.VISIBLE : View.GONE);
         }
         views.setViewVisibility(R.id.empty, View.GONE);
+        WidgetTheme theme = WidgetTheme.load(c, AppWidgetManager.INVALID_APPWIDGET_ID);
+        theme.applySurface(c, views);
         views.setOnClickPendingIntent(R.id.empty, openApp(c));
         return views;
     }
@@ -155,6 +161,7 @@ public class HabitWidget extends AppWidgetProvider {
             WidgetPreferences.ensure(c, id);
             max += WidgetPreferences.load(c, id).capacity();
         }
+        IconStyle style = IconStyle.load(c);
         Map<String, Bitmap> icons = new HashMap<>();
         List<Predictor.Prediction> eligible = new ArrayList<>();
         for (Predictor.Prediction p : data.predictions) {
@@ -164,15 +171,12 @@ public class HabitWidget extends AppWidgetProvider {
                 if (icons.containsKey(p.pkg) || !data.apps.containsKey(p.pkg)
                         || c.getPackageManager().getLaunchIntentForPackage(p.pkg) == null)
                     continue;
-                icons.put(p.pkg, WidgetIcons.source(c.getPackageManager().getApplicationIcon(p.pkg)));
+                icons.put(p.pkg, IconPacks.styled(c, p.pkg, style));
                 eligible.add(p);
             } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
             }
         }
-        IconStyle style = IconStyle.load(c);
-        Map<String, Bitmap> shaped = new HashMap<>();
-        for (Map.Entry<String, Bitmap> icon : icons.entrySet())
-            shaped.put(icon.getKey(), WidgetIcons.style(c, icon.getValue(), style));
+        Map<String, Bitmap> shaped = icons;
         Map<Integer, Map<String, Bitmap>> scaled = new HashMap<>();
         boolean published = false;
         String stamp = current.stamp == 0
@@ -243,6 +247,8 @@ public class HabitWidget extends AppWidgetProvider {
     private static RemoteViews renderFitted(Context c, Repository.Snapshot data, Map<String, Bitmap> icons,
             String stamp, float width, float height, WidgetPreferences layout, int widgetId, boolean exhausted) {
         RemoteViews views = base(c);
+        WidgetTheme theme = WidgetTheme.load(c, widgetId);
+        theme.applySurface(c, views);
         float iconSize = WidgetSizing.iconDp(width, height, layout.columns, layout.rows, layout.percent);
         int index = 0;
         float cellWidth = Math.max(0, width - 16) / layout.columns, cellHeight = Math.max(0, height - 16) / layout.rows;
@@ -268,7 +274,7 @@ public class HabitWidget extends AppWidgetProvider {
             views.addView(ROWS[index / layout.columns], cell);
             index++;
         }
-        if (index == 0 && !exhausted) {
+        if (index == 0 && !exhausted && (!data.permitted || !layout.more)) {
             for (int row : ROWS)
                 views.setViewVisibility(row, View.GONE);
             views.setViewVisibility(R.id.empty, View.VISIBLE);
@@ -284,6 +290,8 @@ public class HabitWidget extends AppWidgetProvider {
         if (layout.more) {
             RemoteViews more = new RemoteViews(c.getPackageName(), R.layout.widget_more);
             more.setTextViewText(R.id.more_time, stamp);
+            theme.applyForeground(c, more, R.id.more_icon, "setColorFilter");
+            theme.applyForeground(c, more, R.id.more_time, "setTextColor");
             more.setContentDescription(R.id.app_cell, "更多推荐应用");
             more.setOnClickPendingIntent(R.id.app_cell,
                     PendingIntent.getActivity(c, 0, MainActivity.widgetIntent(c, widgetId),

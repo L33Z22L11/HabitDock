@@ -1,4 +1,6 @@
 package dev.habitdock;
+import com.google.android.material.slider.Slider;
+import androidx.appcompat.app.AlertDialog;
 
 import android.app.*;
 import android.appwidget.*;
@@ -11,18 +13,29 @@ import android.view.*;
 import android.widget.*;
 import java.util.*;
 
-public final class WidgetSettingsActivity extends Activity {
+public final class WidgetSettingsActivity extends ThemedActivity {
+    @Override
+    boolean nativeWallpaperPreview() {
+        return true;
+    }
+
     private final Map<Integer, WidgetPreferences> originals = new HashMap<>();
+    private final Map<Integer, WidgetTheme> originalThemes = new HashMap<>();
+    private WidgetThemeControls themeControls;
+    private Button addButton;
+    private LinearLayout layoutControls;
     private int selectedId = AppWidgetManager.INVALID_APPWIDGET_ID;
     private Spinner target;
-    private int[] targetIds;
+    private int[] targetIds, bindingsAtOpen;
     private TextView nameValue;
-    private LinearLayout nameRow;
-    private SeekBar columns, rows, scale;
-    private Switch more, moreTime, actions;
+    private Button renameButton;
+    private int[] activeAtOpen;
+    private static final int DEFAULT_HEADER = -10, ACTIVE_HEADER = -11, INACTIVE_HEADER = -12;
+    private Slider columns, rows, scale;
+    private com.google.android.material.materialswitch.MaterialSwitch more, moreTime, actions;
     private TextView columnValue, rowValue, scaleLabel, capacity;
     private Preview preview;
-    private ImageButton restore;
+    private Button restore;
     private boolean binding, configuring;
     @Override
     public void onCreate(Bundle state) {
@@ -39,61 +52,99 @@ public final class WidgetSettingsActivity extends Activity {
                 return;
             }
         }
+        if (configuring) {
+            WidgetInstances.confirm(this, requested);
+            WidgetInstances.rememberHost(this, requested, getCallingPackage());
+        }
         if (state != null) {
+            int[] themes = state.getIntArray("original-themes");
+            if (themes != null)
+                for (int i = 0; i + 3 < themes.length; i += 4)
+                    originalThemes.put(themes[i], new WidgetTheme(themes[i + 1], themes[i + 2], themes[i + 3]));
             int[] saved = state.getIntArray("original-layouts");
             if (saved != null)
                 for (int i = 0; i + 6 < saved.length; i += 7)
                     originals.put(saved[i], new WidgetPreferences(saved[i + 1], saved[i + 2], saved[i + 3],
                             saved[i + 4] != 0, saved[i + 5] != 0, saved[i + 6] != 0));
         }
+        bindingsAtOpen = HabitWidget.boundIds(this);
         int[] active = HabitWidget.ids(this);
         Arrays.sort(active);
-        int[] ids = configuring ? new int[]{requested} : Arrays.copyOf(active, active.length + 2);
-        if (!configuring) {
-            ids[active.length] = AppWidgetManager.INVALID_APPWIDGET_ID;
-            ids[active.length + 1] = WidgetPreferences.COMPACT_DEFAULT;
+        activeAtOpen = active;
+        List<Integer> entries = new ArrayList<>();
+        if (configuring)
+            entries.add(requested);
+        else {
+            entries.add(DEFAULT_HEADER);
+            entries.add(AppWidgetManager.INVALID_APPWIDGET_ID);
+            entries.add(WidgetPreferences.COMPACT_DEFAULT);
+            if (active.length > 0) {
+                entries.add(ACTIVE_HEADER);
+                for (int id : active)
+                    entries.add(id);
+            }
+            boolean header = false;
+            for (int id : bindingsAtOpen) {
+                if (WidgetInstances.active(this, id))
+                    continue;
+                if (!header) {
+                    entries.add(INACTIVE_HEADER);
+                    header = true;
+                }
+                entries.add(id);
+            }
         }
+        int[] ids = entries.stream().mapToInt(Integer::intValue).toArray();
         targetIds = ids;
         // Freeze existing widgets before changing defaults for future widgets.
         for (int id : active)
             WidgetPreferences.ensure(this, id);
         for (int id : ids)
-            originals.putIfAbsent(id, WidgetPreferences.load(this, id));
-        selectedId = state == null ? ids[0] : state.getInt("selected", ids[0]);
+            if (id > DEFAULT_HEADER) {
+                originals.putIfAbsent(id, WidgetPreferences.load(this, id));
+                originalThemes.putIfAbsent(id, WidgetTheme.load(this, id));
+            }
+        int initial = configuring
+                ? requested
+                : getIntent().hasExtra("default-columns")
+                        ? WidgetPreferences.defaultId(getIntent().getIntExtra("default-columns", 4))
+                        : active.length > 0 ? active[0] : 0;
+        selectedId = state == null ? initial : state.getInt("selected", initial);
         boolean validSelection = false;
         for (int id : ids)
             validSelection |= id == selectedId;
         if (!validSelection)
-            selectedId = ids[0];
+            selectedId = initial;
         LinearLayout root = Ui.screen(this);
-        LinearLayout bar = Ui.toolbar(this, root, "组件布局", true);
-        restore = Ui.icon(this, R.drawable.ic_undo, "撤销更改",
-                v -> StyleRestore.show(this, "恢复当前组件布局", () -> bind(originals.get(selectedId)),
-                        () -> bind(WidgetPreferences.defaults(this, selectedId))));
+        WallpaperStage.prepare(this, root);
+        LinearLayout bar = Ui.toolbar(this, root, "组件样式", true);
+        bar.setBackgroundColor(Ui.color(this, R.color.page));
+        restore = StyleRestore.button(this,
+                () -> StyleRestore.show(this, "恢复当前组件外观",
+                        () -> restoreAppearance(originals.get(selectedId), originalThemes.get(selectedId)),
+                        () -> restoreAppearance(WidgetPreferences.defaults(this, selectedId), WidgetTheme.defaults())));
         restore.setTag("widget-save");
         bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout body = Ui.column(this);
-        body.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 20));
         scroll.addView(body);
+        LinearLayout selector = new LinearLayout(this);
+        selector.setGravity(Gravity.CENTER_VERTICAL);
+        selector.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        selector.setBackgroundColor(Ui.color(this, R.color.page));
+        body.addView(selector, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
         if (!configuring) {
-            List<String> labels = new ArrayList<>();
-            for (int i = 0; i < active.length; i++)
-                labels.add(WidgetNames.label(this, active[i]));
-            labels.add(WidgetNames.label(this, AppWidgetManager.INVALID_APPWIDGET_ID));
-            labels.add(WidgetNames.label(this, WidgetPreferences.COMPACT_DEFAULT));
-            target = spinner(labels.toArray(new String[0]));
+            target = spinner();
             target.setTag("widget-target");
-            body.addView(target, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-            int index = 0;
+            selector.addView(target, new LinearLayout.LayoutParams(0, -1, 1));
             for (int i = 0; i < ids.length; i++)
                 if (ids[i] == selectedId)
-                    index = i;
-            target.setSelection(index);
+                    target.setSelection(i);
             target.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 public void onItemSelected(AdapterView<?> p, View v, int position, long id) {
-                    if (columns != null) {
+                    if (columns != null && ids[position] > DEFAULT_HEADER) {
                         selectedId = ids[position];
                         load();
                     }
@@ -102,81 +153,106 @@ public final class WidgetSettingsActivity extends Activity {
                 public void onNothingSelected(AdapterView<?> p) {
                 }
             });
+        } else {
+            nameValue = Ui.text(this, "", 16, R.color.ink);
+            selector.addView(nameValue, new LinearLayout.LayoutParams(0, -2, 1));
         }
-        nameRow = new LinearLayout(this);
-        nameRow.setGravity(Gravity.CENTER_VERTICAL);
-        nameRow.setMinimumHeight(Ui.dp(this, 52));
-        nameRow.setTag("widget-name");
-        Ui.nativeTouch(nameRow);
-        LinearLayout nameCopy = Ui.column(this);
-        nameCopy.addView(Ui.text(this, "组件名称", 13, R.color.muted));
-        nameValue = Ui.text(this, "", 16, R.color.ink);
-        nameValue.setSingleLine(true);
-        nameValue.setEllipsize(TextUtils.TruncateAt.END);
-        nameValue.setPadding(0, Ui.dp(this, 4), 0, 0);
-        nameCopy.addView(nameValue);
-        nameRow.addView(nameCopy, new LinearLayout.LayoutParams(0, -2, 1));
-        ImageView edit = new ImageView(this);
-        edit.setImageResource(R.drawable.ic_edit);
-        edit.setImageTintList(android.content.res.ColorStateList.valueOf(getColor(R.color.muted)));
-        nameRow.addView(edit, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
-        nameRow.setOnClickListener(v -> rename());
-        body.addView(nameRow);
+        renameButton = Ui.textButton(this);
+        renameButton.setText("重命名");
+        renameButton.setTextColor(Ui.color(this, R.color.accent));
+        renameButton.setTag("widget-name");
+        renameButton.setOnClickListener(v -> rename());
+        selector.addView(renameButton, new LinearLayout.LayoutParams(-2, -1));
+        FrameLayout hero = new FrameLayout(this);
+        hero.setTag("wallpaper-preview-stage");
+        hero.setPadding(Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 16));
+        body.addView(hero, new LinearLayout.LayoutParams(-1, -2));
         preview = new Preview(this);
-        body.addView(preview, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout.LayoutParams previewParams = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        hero.addView(preview, previewParams);
+        LinearLayout controls = Ui.column(this);
+        controls.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 20));
+        controls.setBackgroundColor(Ui.color(this, R.color.page));
+        body.addView(controls, new LinearLayout.LayoutParams(-1, -2, 1));
+        themeControls = new WidgetThemeControls(this, this::applyTheme);
+        controls.addView(themeControls, new LinearLayout.LayoutParams(-1, -2));
+        Ui.space(controls, 16);
+        LinearLayout layoutCard = Ui.column(this);
+        layoutCard.setBackground(Ui.shape(this, R.color.surface, 24));
+        layoutCard.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        controls.addView(layoutCard, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout expand = new LinearLayout(this);
+        expand.setTag("widget-layout-toggle");
+        expand.setGravity(Gravity.CENTER_VERTICAL);
+        expand.setPadding(Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8));
+        Ui.nativeTouch(expand);
+        LinearLayout copy = Ui.column(this);
+        copy.addView(Ui.text(this, "排列与入口", 16, R.color.ink));
         capacity = Ui.text(this, "", 12, R.color.muted);
-        capacity.setGravity(Gravity.CENTER);
-        body.addView(capacity);
-        body.addView(Ui.text(this, "调整立即生效，返回即可。撤销仅恢复当前选中的布局。", 12, R.color.muted));
-        Ui.space(body, 16);
+        capacity.setPadding(0, Ui.dp(this, 6), 0, 0);
+        copy.addView(capacity);
+        expand.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView chevron = new ImageView(this);
+        chevron.setImageResource(R.drawable.ic_chevron);
+        chevron.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.color(this, R.color.muted)));
+        expand.addView(chevron, new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)));
+        layoutCard.addView(expand);
+        layoutControls = Ui.column(this);
+        layoutControls.setVisibility(state != null && state.getBoolean("layout-expanded") ? View.VISIBLE : View.GONE);
+        chevron.setRotation(layoutControls.getVisibility() == View.VISIBLE ? 90 : 0);
+        expand.setOnClickListener(v -> {
+            boolean expanded = layoutControls.getVisibility() != View.VISIBLE;
+            layoutControls.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            chevron.setRotation(expanded ? 90 : 0);
+            expand.setContentDescription("排列与入口，" + (expanded ? "已展开" : "已收起"));
+        });
+        layoutCard.addView(layoutControls);
+        body = layoutControls;
         columnValue = Ui.text(this, "", 14, R.color.muted);
         rowValue = Ui.text(this, "", 14, R.color.muted);
         scaleLabel = Ui.text(this, "", 14, R.color.muted);
         columns = slider(body, "应用列数", "widget-columns", 2, 6, columnValue);
         rows = slider(body, "应用行数", "widget-rows", 1, 5, rowValue);
         scale = slider(body, "图标大小", "widget-scale", 50, 100, scaleLabel);
-        body.addView(Ui.text(this, "按格子空间缩放，拖大或缩小组件时自动适配。", 12, R.color.muted));
         Ui.space(body, 12);
-        more = new Switch(this);
+        more = new com.google.android.material.materialswitch.MaterialSwitch(this);
         more.setTag("widget-more");
-        more.setText("末格显示更多");
+        more.setText("显示更多入口");
         more.setTextSize(14);
-        more.setTextColor(getColor(R.color.ink));
+        more.setTextColor(Ui.color(this, R.color.ink));
         body.addView(more, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
         Ui.space(body, 12);
-        moreTime = new Switch(this);
+        moreTime = new com.google.android.material.materialswitch.MaterialSwitch(this);
         moreTime.setTag("widget-more-time");
-        moreTime.setText("更多下方显示更新时间");
+        moreTime.setText("显示更新时间");
         moreTime.setTextSize(14);
-        moreTime.setTextColor(getColor(R.color.ink));
+        moreTime.setTextColor(Ui.color(this, R.color.ink));
         body.addView(moreTime, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
         Ui.space(body, 12);
-        actions = new Switch(this);
+        actions = new com.google.android.material.materialswitch.MaterialSwitch(this);
         actions.setTag("widget-actions");
         actions.setText("点按图标显示操作菜单");
         actions.setTextSize(14);
-        actions.setTextColor(getColor(R.color.ink));
+        actions.setTextColor(Ui.color(this, R.color.ink));
         body.addView(actions, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-        body.addView(Ui.text(this, "可固定、不推荐、查看应用信息、分享安装包。关闭时直接打开应用。", 12, R.color.muted));
         Ui.space(body, 12);
-        body.addView(Ui.text(this, "桌面占位与内部行列独立。添加时先选择桌面占格；支持缩放的桌面还可长按调整占位。这里的行列数只调整组件内部。", 12, R.color.muted));
         more.setOnCheckedChangeListener((v, checked) -> changed());
         moreTime.setOnCheckedChangeListener((v, checked) -> changed());
         actions.setOnCheckedChangeListener((v, checked) -> changed());
-        SeekBar.OnSeekBarChangeListener seekListener = new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar s, int progress, boolean user) {
-                changed();
-            }
-
-            public void onStartTrackingTouch(SeekBar s) {
-            }
-
-            public void onStopTrackingTouch(SeekBar s) {
-            }
-        };
-        columns.setOnSeekBarChangeListener(seekListener);
-        rows.setOnSeekBarChangeListener(seekListener);
-        scale.setOnSeekBarChangeListener(seekListener);
+        Slider.OnChangeListener seekListener = (slider, value, user) -> changed();
+        columns.addOnChangeListener(seekListener);
+        rows.addOnChangeListener(seekListener);
+        scale.addOnChangeListener(seekListener);
+        if (!configuring) {
+            LinearLayout footer = Ui.column(this);
+            footer.setBackgroundColor(Ui.color(this, R.color.page));
+            footer.setPadding(Ui.dp(this, 24), Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 12));
+            addButton = new com.google.android.material.button.MaterialButton(this);
+            addButton.setTag("widget-add");
+            addButton.setOnClickListener(v -> addSelectedWidget());
+            footer.addView(addButton, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56)));
+            root.addView(footer);
+        }
         load();
         if (configuring) {
             // No separate save step: returning also completes launcher configuration.
@@ -189,53 +265,139 @@ public final class WidgetSettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (!configuring && targetIds != null
+                && (!Arrays.equals(bindingsAtOpen, HabitWidget.boundIds(this))
+                        || !Arrays.equals(activeAtOpen, HabitWidget.ids(this)))) {
+            recreate();
+            return;
+        }
         if (preview != null) {
             preview.setStyle(IconStyle.load(this));
             preview.setWidget(selectedId);
         }
     }
 
-    private SeekBar slider(LinearLayout body, String label, String tag, int min, int max, TextView value) {
-        LinearLayout line = new LinearLayout(this);
-        line.setGravity(Gravity.CENTER_VERTICAL);
-        line.addView(Ui.text(this, label, 14, R.color.ink), new LinearLayout.LayoutParams(Ui.dp(this, 72), -2));
-        SeekBar slider = new SeekBar(this);
+    private Slider slider(LinearLayout body, String label, String tag, int min, int max, TextView value) {
+        Slider slider = new Slider(this);
         slider.setTag(tag);
         slider.setContentDescription(label);
-        slider.setMax(max);
-        slider.setMin(min);
-        line.addView(slider, new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1));
-        value.setGravity(Gravity.END);
+        slider.setValueTo(max);
+        slider.setValueFrom(min);
+        slider.setValue(min);
+        slider.setStepSize(1);
+        slider.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
         value.setTag(tag + "-value");
-        line.addView(value, new LinearLayout.LayoutParams(Ui.dp(this, 44), -2));
-        body.addView(line);
+        Ui.sliderRow(body, label, slider, value);
         return slider;
     }
 
-    private Spinner spinner(String[] labels) {
+    private Spinner spinner() {
         Spinner view = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-                new ArrayList<>(Arrays.asList(labels)));
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        BaseAdapter adapter = new BaseAdapter() {
+            public int getCount() {
+                return targetIds.length;
+            }
+
+            public Object getItem(int position) {
+                return targetLabel(targetIds[position]);
+            }
+
+            public long getItemId(int position) {
+                return targetIds[position];
+            }
+
+            public boolean areAllItemsEnabled() {
+                return false;
+            }
+
+            public boolean isEnabled(int position) {
+                return targetIds[position] > DEFAULT_HEADER;
+            }
+
+            public View getView(int position, View convertView, ViewGroup parent) {
+                return targetRow(position);
+            }
+
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                return targetRow(position);
+            }
+        };
         view.setAdapter(adapter);
         return view;
     }
 
+    private String targetLabel(int id) {
+        if (id == DEFAULT_HEADER)
+            return "默认布局";
+        if (id == ACTIVE_HEADER)
+            return "已启用";
+        if (id == INACTIVE_HEADER)
+            return "未完成添加或已隐藏";
+        return WidgetNames.label(this, id);
+    }
+
+    private View targetRow(int position) {
+        int id = targetIds[position];
+        if (id <= DEFAULT_HEADER) {
+            TextView header = Ui.text(this, targetLabel(id), 12, R.color.muted);
+            header.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 6));
+            return header;
+        }
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 12), 0);
+        row.setMinimumHeight(Ui.dp(this, 48));
+        ImageView icon = new ImageView(this);
+        icon.setImageDrawable(id > 0
+                ? WidgetInstances.hostIcon(this, id)
+                : androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_add_widget));
+        icon.setContentDescription(id > 0 ? WidgetInstances.hostLabel(this, id) : "默认布局");
+        row.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)));
+        TextView text = Ui.text(this, WidgetNames.label(this, id), 16, R.color.ink);
+        text.setSingleLine(true);
+        text.setEllipsize(TextUtils.TruncateAt.END);
+        text.setPadding(Ui.dp(this, 10), 0, 0, 0);
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        return row;
+    }
+
+    private void hideSelected() {
+        if (selectedId <= 0)
+            return;
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("隐藏此组件？")
+                .setMessage("从布局列表和推荐分配中隐藏，可在未完成添加或已隐藏中恢复。不会删除宿主中的绑定。")
+                .setNegativeButton("取消", null).setPositiveButton("隐藏", (d, which) -> {
+                    WidgetInstances.setHidden(this, selectedId, true);
+                    if (configuring)
+                        finish();
+                    else
+                        recreate();
+                }).show();
+    }
+
     private WidgetPreferences input() {
-        return new WidgetPreferences(columns.getProgress(), rows.getProgress(),
-                scale.getProgress(), more.isChecked(), actions.isChecked(), moreTime.isChecked());
+        return new WidgetPreferences((int) columns.getValue(), (int) rows.getValue(),
+                (int) scale.getValue(), more.isChecked(), actions.isChecked(), moreTime.isChecked());
     }
 
     private void load() {
-        nameRow.setVisibility(
+        renameButton.setVisibility(
                 selectedId <= 0 ? View.GONE : View.VISIBLE);
         updateName();
         preview.setWidget(selectedId);
+        themeControls.bind(WidgetTheme.load(this, selectedId));
+        if (addButton != null)
+            addButton.setText(WidgetPreferences.templateId(this, selectedId) == WidgetPreferences.COMPACT_DEFAULT
+                    ? "添加 2×2 组件"
+                    : "添加 4×2 组件");
         bind(WidgetPreferences.load(this, selectedId));
     }
 
     private void updateName() {
-        nameValue.setText(WidgetNames.label(this, selectedId));
+        if (nameValue != null)
+            nameValue.setText(WidgetNames.label(this, selectedId));
+        if (target != null)
+            ((BaseAdapter) target.getAdapter()).notifyDataSetChanged();
     }
 
     private void rename() {
@@ -251,22 +413,20 @@ public final class WidgetSettingsActivity extends Activity {
         input.selectAll();
         content.addView(input, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
         content.addView(Ui.text(this, "用于设置中区分各个组件。桌面自带的下方标题由桌面管理。", 12, R.color.muted));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("组件名称").setView(content)
+        AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("组件名称")
+                .setView(content)
+                .setNeutralButton(WidgetInstances.active(this, id) ? "隐藏组件" : "启用组件", (d, which) -> {
+                    if (WidgetInstances.active(this, id))
+                        hideSelected();
+                    else {
+                        WidgetInstances.setHidden(this, id, false);
+                        recreate();
+                    }
+                })
                 .setNegativeButton("取消", null).setPositiveButton("保存", (d, which) -> {
                     WidgetNames.save(this, id, input.getText().toString());
                     updateName();
-                    if (target != null) {
-                        @SuppressWarnings("unchecked")
-                        ArrayAdapter<String> adapter = (ArrayAdapter<String>) target.getAdapter();
-                        adapter.setNotifyOnChange(false);
-                        adapter.clear();
-                        for (int targetId : targetIds)
-                            adapter.add(WidgetNames.label(this, targetId));
-                        adapter.notifyDataSetChanged();
-                        for (int i = 0; i < targetIds.length; i++)
-                            if (targetIds[i] == id)
-                                target.setSelection(i);
-                    }
+
                 }).create();
         dialog.setOnShowListener(d -> {
             input.requestFocus();
@@ -275,11 +435,41 @@ public final class WidgetSettingsActivity extends Activity {
         dialog.show();
     }
 
+    private void applyTheme(WidgetTheme theme) {
+        Repository.prefs(this).edit().putInt("widget.preview_id", selectedId).apply();
+        if (!theme.sameAs(WidgetTheme.load(this, selectedId))) {
+            theme.save(this, selectedId);
+            WidgetAppearance.request(this);
+        }
+        preview.theme = theme;
+        changed();
+    }
+
+    private void restoreAppearance(WidgetPreferences layout, WidgetTheme theme) {
+        themeControls.bind(theme);
+        applyTheme(theme);
+        bind(layout);
+    }
+
+    private void addSelectedWidget() {
+        int columns = WidgetPreferences.templateId(this, selectedId) == WidgetPreferences.COMPACT_DEFAULT ? 2 : 4;
+        try {
+            if (WidgetPinRequest.request(this, columns, 2, input(), "", WidgetTheme.load(this, selectedId)))
+                return;
+        } catch (RuntimeException error) {
+            Ui.toast(this, "暂时无法添加组件，请重试");
+            return;
+        }
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("请从桌面添加")
+                .setMessage("长按桌面空白处，在小组件列表选择知时。")
+                .setPositiveButton("知道了", null).show();
+    }
+
     private void bind(WidgetPreferences p) {
         binding = true;
-        columns.setProgress(p.columns);
-        rows.setProgress(p.rows);
-        scale.setProgress(p.percent);
+        columns.setValue(p.columns);
+        rows.setValue(p.rows);
+        scale.setValue(p.percent);
         more.setChecked(p.more);
         moreTime.setChecked(p.moreTime);
         actions.setChecked(p.actions);
@@ -295,7 +485,8 @@ public final class WidgetSettingsActivity extends Activity {
             p.save(this, selectedId);
             WidgetAppearance.request(this);
         }
-        StyleRestore.update(restore, !p.sameAs(originals.get(selectedId)));
+        StyleRestore.update(restore, !p.sameAs(originals.get(selectedId))
+                || !WidgetTheme.load(this, selectedId).sameAs(originalThemes.get(selectedId)));
         columnValue.setText(String.valueOf(p.columns));
         rowValue.setText(String.valueOf(p.rows));
         scaleLabel.setText(getString(R.string.widget_scale, p.percent));
@@ -315,6 +506,16 @@ public final class WidgetSettingsActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle out) {
         out.putInt("selected", selectedId);
+        out.putBoolean("layout-expanded", layoutControls.getVisibility() == View.VISIBLE);
+        int[] themes = new int[originalThemes.size() * 4];
+        int themeIndex = 0;
+        for (Map.Entry<Integer, WidgetTheme> entry : originalThemes.entrySet()) {
+            themes[themeIndex++] = entry.getKey();
+            themes[themeIndex++] = entry.getValue().mode;
+            themes[themeIndex++] = entry.getValue().transparency;
+            themes[themeIndex++] = entry.getValue().color;
+        }
+        out.putIntArray("original-themes", themes);
         int[] saved = new int[originals.size() * 7];
         int i = 0;
         for (Map.Entry<Integer, WidgetPreferences> e : originals.entrySet()) {
@@ -331,11 +532,19 @@ public final class WidgetSettingsActivity extends Activity {
     }
 
     static RemoteViews pinPreview(Context context, WidgetPreferences layout, int columns, int rows) {
+        return pinPreview(context, layout, columns, rows,
+                WidgetTheme.load(context, WidgetPreferences.defaultId(columns)));
+    }
+
+    static RemoteViews pinPreview(Context context, WidgetPreferences layout, int columns, int rows, WidgetTheme theme) {
         android.content.res.Configuration config = new android.content.res.Configuration(
                 context.getResources().getConfiguration());
         config.densityDpi = 160;
-        Preview preview = new Preview(context.createConfigurationContext(config));
+        Preview preview = new Preview(context.createConfigurationContext(config), false);
+        preview.data = PreviewContent.load(context, IconStyle.load(context).pack, 0, 30, false);
+        preview.renderIcons();
         preview.layout = layout;
+        preview.theme = theme;
         int width = 320, height = width * rows / columns;
         preview.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
@@ -347,19 +556,36 @@ public final class WidgetSettingsActivity extends Activity {
         return views;
     }
 
-    private static final class Preview extends View {
+    static final class Preview extends View {
         WidgetPreferences layout = new WidgetPreferences(5, 2, 82, true);
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        final Bitmap[] sources = new Bitmap[3], icons = new Bitmap[3];
+        PreviewContent data = new PreviewContent();
+        final List<Bitmap> icons = new ArrayList<>();
+        IconStyle style;
+        WidgetTheme theme;
+        String loadedKey = "";
+        int widgetId, generation, sampleOffset;
+        boolean fillSamples;
+        final boolean asynchronous;
         final RectF destination = new RectF();
         float desktopWidth = 320, desktopHeight = 160;
-        boolean desktopSizing;
+        boolean desktopSizing, widePreview;
+
+        void setSamples(int offset) {
+            sampleOffset = Math.max(0, offset);
+            fillSamples = true;
+            setStyle(IconStyle.load(getContext()));
+        }
 
         void setWidget(int id) {
+            widgetId = id;
+            theme = WidgetTheme.load(getContext(), id);
+            setStyle(IconStyle.load(getContext()));
             AppWidgetManager manager = AppWidgetManager.getInstance(getContext());
             AppWidgetProviderInfo info = id > 0 ? manager.getAppWidgetInfo(id) : null;
             boolean compact = id == WidgetPreferences.COMPACT_DEFAULT
                     || (info != null && info.provider.equals(HabitWidget.provider(getContext(), true)));
+            widePreview = !compact;
             desktopWidth = compact ? 160 : 320;
             desktopHeight = 160;
             // Defaults use the most recently added matching instance as the host's size
@@ -382,6 +608,12 @@ public final class WidgetSettingsActivity extends Activity {
             invalidate();
         }
 
+        private float previewWidth(int available) {
+            return desktopSizing
+                    ? WidgetSizing.previewWidth(available, getResources().getDisplayMetrics().density, widePreview)
+                    : available;
+        }
+
         @Override
         protected void onMeasure(int widthSpec, int heightSpec) {
             if (!desktopSizing) {
@@ -389,37 +621,66 @@ public final class WidgetSettingsActivity extends Activity {
                 return;
             }
             int available = MeasureSpec.getSize(widthSpec);
-            float width = Math.min(available, Ui.dp(getContext(), desktopWidth));
+            float width = previewWidth(available);
             int height = Math.round(width * desktopHeight / desktopWidth);
             setMeasuredDimension(available, resolveSize(height, heightSpec));
         }
 
         Preview(Context c) {
+            this(c, true);
+        }
+
+        Preview(Context c, boolean asynchronous) {
             super(c);
+            this.asynchronous = asynchronous;
+            theme = WidgetTheme.load(c, 0);
             setContentDescription("组件布局预览");
             setTag("widget-preview");
-            int[] colors = {0xff3a8872, 0xff5681c7, 0xffcf8653};
-            for (int i = 0; i < sources.length; i++) {
-                sources[i] = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(sources[i]);
-                paint.setColor(colors[i]);
-                canvas.drawCircle(64, 64, 54, paint);
-                paint.setColor(Color.WHITE);
-                canvas.drawCircle(64, 64, 18, paint);
-            }
             setStyle(IconStyle.load(c));
         }
 
         void setStyle(IconStyle style) {
-            for (int i = 0; i < sources.length; i++)
-                icons[i] = WidgetIcons.style(getContext(), sources[i], style);
+            this.style = style;
+            renderIcons();
+            if (!asynchronous)
+                return;
+            String key = style.pack + ":" + widgetId + ":" + RefreshPolicy.last(getContext())
+                    + ":" + fillSamples + ":" + sampleOffset;
+            if (key.equals(loadedKey))
+                return;
+            loadedKey = key;
+            int request = ++generation, id = widgetId, offset = sampleOffset;
+            boolean fallback = fillSamples;
+            int limit = fallback ? layout.capacity() : 30;
+            Context context = getContext().getApplicationContext().createConfigurationContext(
+                    new android.content.res.Configuration(getResources().getConfiguration()));
+            Repository.WORK.execute(() -> {
+                PreviewContent content = PreviewContent.load(context, style.pack, id, limit, fallback, offset);
+                post(() -> {
+                    if (generation != request)
+                        return;
+                    data = content;
+                    setContentDescription("组件布局预览：" + String.join("、", data.labels)
+                            + (data.time().isEmpty() ? "" : "，更新于 " + data.time()));
+                    renderIcons();
+                });
+            });
+        }
+
+        void renderIcons() {
+            icons.clear();
+            for (int i = 0; i < data.sources.size(); i++)
+                icons.add(WidgetIcons.style(getContext(), data.sources.get(i), style,
+                        i < data.themed.size() && data.themed.get(i)));
             invalidate();
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            float w = desktopSizing ? Math.min(getWidth(), Ui.dp(getContext(), desktopWidth)) : getWidth();
+            float w = previewWidth(getWidth());
+            if (w <= 0 || getHeight() <= 0)
+                return;
             float h = getHeight(), x = (getWidth() - w) / 2f, y = 0;
             float factor = desktopSizing ? w / Ui.dp(getContext(), desktopWidth) : 1;
             canvas.save();
@@ -429,7 +690,7 @@ public final class WidgetSettingsActivity extends Activity {
             y = 0;
             w /= factor;
             h /= factor;
-            paint.setColor(getContext().getColor(R.color.surface));
+            paint.setColor(theme.background(getContext()));
             canvas.drawRoundRect(x, y, x + w, y + h, Ui.dp(getContext(), 24), Ui.dp(getContext(), 24), paint);
             x += Ui.dp(getContext(), 8);
             y += Ui.dp(getContext(), 8);
@@ -438,7 +699,7 @@ public final class WidgetSettingsActivity extends Activity {
             float cw = w / layout.columns, ch = h / layout.rows, side = Math.min(cw, ch) * layout.percent / 100f;
             for (int index = 0; index < layout.rows * layout.columns; index++) {
                 float cx = x + cw * (index % layout.columns + .5f), cy = y + ch * (index / layout.columns + .5f);
-                paint.setColor(getContext().getColor(R.color.accent));
+                paint.setColor(theme.foreground(getContext()));
                 if (layout.more && index == layout.rows * layout.columns - 1) {
                     float moreSide = Math.min(Ui.dp(getContext(), 28), side * .5f);
                     for (int dot = -1; dot <= 1; dot++)
@@ -447,12 +708,12 @@ public final class WidgetSettingsActivity extends Activity {
                         paint.setTextSize(Ui.dp(getContext(), 9));
                         paint.setTextAlign(Paint.Align.CENTER);
                         paint.setAlpha(89);
-                        canvas.drawText("12:34", cx, cy + moreSide / 2 + Ui.dp(getContext(), 9), paint);
+                        canvas.drawText(data.time(), cx, cy + moreSide / 2 + Ui.dp(getContext(), 9), paint);
                         paint.setAlpha(255);
                     }
-                } else {
+                } else if (index < icons.size()) {
                     destination.set(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2);
-                    canvas.drawBitmap(icons[index % icons.length], null, destination, paint);
+                    canvas.drawBitmap(icons.get(index), null, destination, paint);
                 }
             }
             canvas.restore();

@@ -37,6 +37,12 @@ public final class PickerLayoutTest {
         check(WidgetSizing.iconDp(336, 336, 3, 3, 80) == 2 * WidgetSizing.iconDp(176, 176, 3, 3, 80),
                 "doubling available space doubles icon size");
         check(WidgetSizing.iconDp(8, 8, 3, 3, 80) == 0, "no negative size when host supplies no usable space");
+        check(WidgetSizing.previewWidth(400, 1, true) == 340, "wide preview capped at 340 dp");
+        check(WidgetSizing.previewWidth(400, 1, false) == 170, "compact preview is half wide preview");
+        check(WidgetSizing.previewWidth(280, 1, false) == WidgetSizing.previewWidth(280, 1, true) / 2,
+                "narrow previews share scale");
+        check(WidgetSizing.previewWidth(800, 2, false) == 340, "preview sizing accounts for density");
+        check(WidgetSizing.previewWidth(0, 1, false) == 0, "zero width preview is empty");
         System.out.println("PASS: " + checks + " picker and widget sizing scenarios");
     }
 }

@@ -13,15 +13,33 @@ import java.util.UUID;
  */
 public final class WidgetPinRequest extends BroadcastReceiver {
     static Intent callback(Context context, ComponentName provider, WidgetPreferences layout, String name) {
+        int template = provider.equals(HabitWidget.provider(context, true)) ? WidgetPreferences.COMPACT_DEFAULT : 0;
+        return callback(context, provider, layout, name, WidgetTheme.load(context, template));
+    }
+
+    static Intent callback(Context context, ComponentName provider, WidgetPreferences layout, String name,
+            WidgetTheme theme) {
+        android.content.pm.ResolveInfo home = context.getPackageManager().resolveActivity(
+                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+        String host = home == null || home.activityInfo == null ? "" : home.activityInfo.packageName;
         return new Intent(context, WidgetPinRequest.class)
                 .setData(Uri.parse("habitdock://pin/" + UUID.randomUUID()))
-                .putExtra("provider", provider.flattenToString()).putExtra("name", name)
+                .putExtra("host", host).putExtra("provider", provider.flattenToString()).putExtra("name", name)
+                .putExtra("theme", theme.mode).putExtra("transparency", theme.transparency)
+                .putExtra("color", theme.color)
                 .putExtra("columns", layout.columns).putExtra("rows", layout.rows)
                 .putExtra("percent", layout.percent).putExtra("more", layout.more)
                 .putExtra("more-time", layout.moreTime).putExtra("actions", layout.actions);
     }
 
     static boolean request(Context context, int columns, int rows, WidgetPreferences layout, String name) {
+        return request(context, columns, rows, layout, name,
+                WidgetTheme.load(context, WidgetPreferences.defaultId(columns)));
+    }
+
+    static boolean request(Context context, int columns, int rows, WidgetPreferences layout, String name,
+            WidgetTheme theme) {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
         if (!manager.isRequestPinAppWidgetSupported())
             return false;
@@ -31,12 +49,13 @@ public final class WidgetPinRequest extends BroadcastReceiver {
         int flags = PendingIntent.FLAG_ONE_SHOT;
         if (Build.VERSION.SDK_INT >= 31)
             flags |= PendingIntent.FLAG_MUTABLE;
-        PendingIntent callback = PendingIntent.getBroadcast(context, 0, callback(context, provider, layout, name),
+        PendingIntent callback = PendingIntent.getBroadcast(context, 0,
+                callback(context, provider, layout, name, theme),
                 flags);
         try {
             android.os.Bundle extras = new android.os.Bundle();
             extras.putParcelable(AppWidgetManager.EXTRA_APPWIDGET_PREVIEW,
-                    WidgetSettingsActivity.pinPreview(context, layout, columns, rows));
+                    WidgetSettingsActivity.pinPreview(context, layout, columns, rows, theme));
             if (manager.requestPinAppWidget(provider, extras, callback))
                 return true;
         } catch (RuntimeException error) {
@@ -56,6 +75,12 @@ public final class WidgetPinRequest extends BroadcastReceiver {
         new WidgetPreferences(intent.getIntExtra("columns", 5), intent.getIntExtra("rows", 2),
                 intent.getIntExtra("percent", 82), intent.getBooleanExtra("more", true),
                 intent.getBooleanExtra("actions", false), intent.getBooleanExtra("more-time", true)).save(context, id);
+        WidgetTheme defaults = WidgetTheme.load(context, id);
+        new WidgetTheme(intent.getIntExtra("theme", defaults.mode),
+                intent.getIntExtra("transparency", defaults.transparency),
+                intent.getIntExtra("color", defaults.color)).save(context, id);
+        WidgetInstances.confirm(context, id);
+        WidgetInstances.rememberHost(context, id, intent.getStringExtra("host"));
         String name = intent.getStringExtra("name");
         WidgetNames.save(context, id, name == null ? "" : name);
         return true;
