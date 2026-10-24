@@ -69,9 +69,18 @@ final class WidgetTheme {
     int surface(Context context) {
         if (mode == CUSTOM)
             return color;
-        if (mode == DEVICE && Build.VERSION.SDK_INT >= 31)
-            return context.getColor(dark() ? android.R.color.system_accent1_800 : android.R.color.system_accent1_100);
-        return dark() ? 0xff171d1b : Color.WHITE;
+        if (mode == DEVICE)
+            return deviceColor(context, dark());
+        return dark() ? Color.BLACK : Color.WHITE;
+    }
+
+    private int deviceColor(Context context, boolean night) {
+        Integer seed = Appearance.automaticSeed(context);
+        if (seed != null)
+            return ColorUtils.blendARGB(seed, night ? Color.BLACK : Color.WHITE, .8f);
+        if (!MainStyle.imageMode(MainStyle.load(context).background) && Build.VERSION.SDK_INT >= 31)
+            return context.getColor(night ? android.R.color.system_accent1_800 : android.R.color.system_accent1_100);
+        return night ? Color.BLACK : Color.WHITE;
     }
 
     int background(Context context) {
@@ -96,15 +105,18 @@ final class WidgetTheme {
     private int hostBackground(Context context, boolean night) {
         int base = surface(context);
         if (mode == SYSTEM)
-            base = night ? 0xff171d1b : Color.WHITE;
-        else if (mode == DEVICE && Build.VERSION.SDK_INT >= 31)
-            base = context.getColor(night ? android.R.color.system_accent1_800 : android.R.color.system_accent1_100);
+            base = night ? Color.BLACK : Color.WHITE;
+        else if (mode == DEVICE)
+            base = deviceColor(context, night);
         return ColorUtils.setAlphaComponent(base, Math.round(255 * (100 - transparency) / 100f));
     }
 
     void applyForeground(Context context, android.widget.RemoteViews views, int id, String method) {
-        if (Build.VERSION.SDK_INT >= 31 && mode == DEVICE)
+        if (Build.VERSION.SDK_INT >= 31 && mode == DEVICE
+                && !MainStyle.imageMode(MainStyle.load(context).background))
             views.setColor(id, method, R.color.widget_device_ink);
+        else if (Build.VERSION.SDK_INT >= 31 && mode == DEVICE)
+            views.setColorInt(id, method, deviceColor(context, true), deviceColor(context, false));
         else if (Build.VERSION.SDK_INT >= 31 && mode == SYSTEM)
             views.setColorInt(id, method, 0xff202823, 0xfff3f5f4);
         else
@@ -112,8 +124,8 @@ final class WidgetTheme {
     }
 
     int foreground(Context context) {
-        if (mode == DEVICE && Build.VERSION.SDK_INT >= 31)
-            return context.getColor(dark() ? android.R.color.system_accent1_100 : android.R.color.system_accent1_800);
+        if (mode == DEVICE)
+            return deviceColor(context, !dark());
         return ColorUtils.calculateLuminance(surface(context)) < .3 ? 0xfff3f5f4 : 0xff202823;
     }
 }

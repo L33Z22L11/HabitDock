@@ -1,5 +1,6 @@
 <resources>
     <style name="BaseAppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="materialAlertDialogTheme">@style/AppDialogTheme</item>
         <item name="android:fontFamily">sans</item>
         <item name="colorPrimary">@color/accent</item>
         <item name="colorOnPrimary">@color/surface</item>
@@ -33,6 +34,8 @@
         <item name="android:colorControlNormal">?attr/colorOnSurfaceVariant</item>
         <item name="android:textColorPrimary">?attr/colorOnSurface</item>
         <item name="android:textColorSecondary">?attr/colorOnSurfaceVariant</item>
+        <item name="android:scrollbarStyle">outsideOverlay</item>
+        <item name="android:scrollbarSize">3dp</item>
         <item name="android:scrollbarThumbVertical">@drawable/scrollbar_thumb</item>
         <item name="android:scrollbarThumbHorizontal">@drawable/scrollbar_thumb</item>
         <item name="android:windowLightStatusBar">true</item>
@@ -40,6 +43,18 @@
         <item name="android:navigationBarColor">#101615</item>
         <item name="android:windowBackground">?attr/colorSurface</item>
         <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="AppDialogTheme" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+    <style name="NativeWallpaperWindow">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
     <style name="AppTheme" parent="BaseAppTheme" />
     <style name="WallpaperSurfaceTheme" parent="AppTheme">

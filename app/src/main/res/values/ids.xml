@@ -1,4 +1,5 @@
 <resources>
     <item name="settings_list" type="id" />
     <item name="wallpaper_cutout_listener" type="id" />
+    <item name="wallpaper_stage_key" type="id" />
 </resources>

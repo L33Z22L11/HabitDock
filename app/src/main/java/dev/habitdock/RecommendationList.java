@@ -31,6 +31,7 @@ final class RecommendationList extends ListView {
         setItemsCanFocus(true);
         setPadding(Ui.dp(a, 8), Ui.dp(a, 8), Ui.dp(a, 8), Ui.dp(a, 8));
         setClipToPadding(false);
+        setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
         adapter = new BaseAdapter() {
             public int getCount() {
                 return (predictions.size() + columns - 1) / columns;
@@ -98,7 +99,7 @@ final class RecommendationList extends ListView {
             return;
         if (style.hasBackground()) {
             android.graphics.drawable.GradientDrawable thumb = new android.graphics.drawable.GradientDrawable();
-            thumb.setColor(0xBEFFFFFF);
+            thumb.setColor(androidx.core.graphics.ColorUtils.setAlphaComponent(style.ink(context), 102));
             thumb.setCornerRadius(Ui.dp(context, 2));
             thumb.setSize(Ui.dp(context, 3), Ui.dp(context, 32));
             setVerticalScrollbarThumbDrawable(thumb);

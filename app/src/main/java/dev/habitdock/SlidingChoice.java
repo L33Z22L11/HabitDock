@@ -19,6 +19,7 @@ final class SlidingChoice extends FrameLayout {
     private final IntConsumer changed;
     private final int inset, slop;
     private int selected;
+    private FormRow form;
     private float downX, downY;
     private boolean dragging;
 
@@ -35,6 +36,10 @@ final class SlidingChoice extends FrameLayout {
         int selection = token(dark
                 ? com.google.android.material.R.attr.colorSurfaceContainerHighest
                 : com.google.android.material.R.attr.colorSurfaceContainerLowest);
+        if (MainStyle.load(context).hasBackground()) {
+            container = androidx.core.graphics.ColorUtils.setAlphaComponent(container, 80);
+            selection = androidx.core.graphics.ColorUtils.setAlphaComponent(selection, 160);
+        }
         setBackground(shape(container, 14));
         setPadding(inset, inset, inset, inset);
         thumb = new View(context);
@@ -70,25 +75,13 @@ final class SlidingChoice extends FrameLayout {
         return selected;
     }
 
-    void addRow(LinearLayout body, String title) {
-        LinearLayout row = new LinearLayout(getContext());
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(Ui.dp(getContext(), Ui.FORM_ROW_HEIGHT));
-        boolean stacked = getResources().getConfiguration().fontScale > 1.35f;
-        row.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        TextView label = Ui.text(getContext(), title, 15, R.color.ink);
-        row.addView(label, new LinearLayout.LayoutParams(stacked ? -1 : -2, -2));
-        if (stacked)
-            Ui.space(row, 8);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, Ui.dp(getContext(),
-                Math.max(Ui.SEGMENT_HEIGHT, 20 * getResources().getConfiguration().fontScale + 16)));
-        params.setMarginStart(stacked ? 0 : Ui.dp(getContext(), 12));
-        if (!stacked) {
-            View spacer = new View(getContext());
-            row.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
-        }
-        row.addView(this, params);
-        body.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    void addRow(LinearLayout body, String title, int defaultValue) {
+        form = new FormRow(getContext(), title);
+        form.control(this, Math.round(Math.max(Ui.SEGMENT_HEIGHT,
+                20 * getResources().getConfiguration().fontScale + 16)), false, null);
+        form.reset(getTag() == null ? title : getTag().toString(), () -> selected != defaultValue,
+                () -> commit(defaultValue));
+        body.addView(form, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private int token(int attr) {
@@ -110,6 +103,8 @@ final class SlidingChoice extends FrameLayout {
             labels[i].setTextColor(Ui.color(getContext(), i == selected ? R.color.ink : R.color.muted));
         }
         move(selected * segmentWidth(), animate);
+        if (form != null)
+            form.refreshReset();
     }
 
     private float segmentWidth() {

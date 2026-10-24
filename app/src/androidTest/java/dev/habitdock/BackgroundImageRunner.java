@@ -103,6 +103,14 @@ public final class BackgroundImageRunner extends Instrumentation {
             check(sharp.getPixel(10, 30) == Color.RED, "blur keeps original image intact");
             MainStyle style = new MainStyle(44, 16, MainStyle.CUSTOM_IMAGE, 1, false, 80, 60);
             style.save(c);
+            Integer imageSeed = Appearance.automaticSeed(c);
+            BackgroundImages.select(c, MainStyle.IMAGE, id[0]);
+            new MainStyle(44, 16, MainStyle.IMAGE, 1, false, 80, 60).save(c);
+            check(imageSeed != null && imageSeed.equals(Appearance.automaticSeed(c)),
+                    "compatibility wallpaper uses its cached image palette");
+            int widgetColor = new WidgetTheme(WidgetTheme.DEVICE, 60, 0).surface(c);
+            check(widgetColor != android.graphics.Color.TRANSPARENT, "widget resolves cached wallpaper palette");
+            style.save(c);
             check(MainStyle.load(c).sameAs(style) && BackgroundImages.exists(c), "image mode and blur survive reload");
             current = startActivitySync(new Intent(c, MainActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
@@ -111,7 +119,7 @@ public final class BackgroundImageRunner extends Instrumentation {
             runOnMainSync(() -> {
                 ViewGroup host = current.findViewById(android.R.id.content);
                 android.widget.LinearLayout root = (android.widget.LinearLayout) host.getChildAt(0);
-                WallpaperStage.prepareImage(current, root, style.toolbar(current), style.wallpaperVeil());
+                WallpaperStage.prepareImage(current, root, style.toolbar(current), style.wallpaperVeil(current));
                 Bitmap first = background(current), second = background(current);
                 check(first.sameAs(second), "status bar paint cannot change image opacity on the next frame");
                 WallpaperStage.prepareImage(current, root, Ui.color(current, R.color.page),
@@ -166,34 +174,79 @@ public final class BackgroundImageRunner extends Instrumentation {
             for (Class<?> type : new Class<?>[]{IconStyleActivity.class, WidgetSettingsActivity.class}) {
                 open(type);
                 ThemedActivity screen = (ThemedActivity) current;
-                check(screen.wallpaperScene() && screen.nativeWallpaperPreview(),
-                        "desktop style preview always uses native wallpaper: " + type.getSimpleName());
-                check((screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER) != 0,
-                        "native preview keeps wallpaper flag in image mode");
-                check(screen.getWindow().getAttributes().format == PixelFormat.TRANSLUCENT,
-                        "native preview window remains translucent after resume");
-                check(Color.alpha(Ui.color(screen, R.color.page)) == 218,
-                        "native cutout page keeps app image theme surfaces");
-                ViewGroup host = screen.findViewById(android.R.id.content);
-                check(host.getChildAt(0).getBackground().getOpacity() == PixelFormat.TRANSLUCENT,
-                        "native preview has transparent wallpaper holes");
+                check(!screen.wallpaperScene(), "image previews share the selected image background");
+                check((screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER) == 0,
+                        "image previews do not expose the native wallpaper");
+                check(screen.getWindow().getAttributes().format == PixelFormat.OPAQUE,
+                        "image preview window remains opaque after resume");
                 runOnMainSync(() -> {
-                    View stage = screen.findViewById(android.R.id.content).findViewWithTag("wallpaper-preview-stage");
-                    Rect visible = new Rect();
-                    check(stage.getLocalVisibleRect(visible), "preview stage is visible");
-                    ViewGroup frame = screen.findViewById(android.R.id.content);
-                    ViewGroup root = (ViewGroup) frame.getChildAt(0);
-                    root.offsetDescendantRectToMyCoords(stage, visible);
                     Bitmap pixels = background(screen);
-                    check(Color.alpha(pixels.getPixel(visible.centerX(), visible.centerY())) == 0,
-                            "only preview hole exposes real wallpaper");
-                    check(Color.alpha(pixels.getPixel(pixels.getWidth() / 2, 0)) > 0,
-                            "outside preview keeps application background");
+                    check(Color.alpha(pixels.getPixel(pixels.getWidth() / 2, pixels.getHeight() / 2)) == 255,
+                            "image preview paints its selected background");
                     pixels.recycle();
                     screen.prepareReturnPreview();
                 });
-                check((screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER) != 0,
-                        "return preparation preserves native wallpaper");
+            }
+            for (int mode : new int[]{MainStyle.IMAGE, MainStyle.CUSTOM_IMAGE}) {
+                for (Class<?> type : new Class<?>[]{MainActivity.class, SettingsActivity.class}) {
+                    new MainStyle(44, 16, mode, 1, false, 100, 60).save(c);
+                    open(type);
+                    runOnMainSync(() -> {
+                        int[] pixels = new int[3];
+                        int index = 0;
+                        for (int transparency : new int[]{0, 50, 100}) {
+                            new MainStyle(44, 16, mode, 1, false, transparency, 60).save(current);
+                            WallpaperStage.refresh(current);
+                            Bitmap frame = background(current);
+                            pixels[index++] = frame.getPixel(frame.getWidth() / 2, frame.getHeight() * 3 / 4);
+                            frame.recycle();
+                        }
+                        int surface = Ui.color(current, R.color.page);
+                        check(Math.abs(Color.red(pixels[0]) - Color.red(surface)) <= 1
+                                && Math.abs(Color.green(pixels[0]) - Color.green(surface)) <= 1
+                                && Math.abs(Color.blue(pixels[0]) - Color.blue(surface)) <= 1,
+                                "zero global transparency fully covers image, allowing 8-bit blend rounding");
+                        check(pixels[0] != pixels[2], "image control background still responds to global transparency");
+                        int expected = androidx.core.graphics.ColorUtils.blendARGB(pixels[0], pixels[2], .5f);
+                        check(Math.abs(Color.red(pixels[1]) - Color.red(expected)) <= 2
+                                && Math.abs(Color.green(pixels[1]) - Color.green(expected)) <= 2
+                                && Math.abs(Color.blue(pixels[1]) - Color.blue(expected)) <= 2,
+                                "image opacity composes with additional theme veil instead of replacing global value");
+                    });
+                }
+            }
+            for (int mode : new int[]{MainStyle.IMAGE, MainStyle.CUSTOM_IMAGE}) {
+                for (Class<?> type : new Class<?>[]{IconStyleActivity.class, WidgetSettingsActivity.class,
+                        MainStyleActivity.class}) {
+                    runOnMainSync(() -> current.finish());
+                    new MainStyle(44, 16, mode, 1, false, 100, 60).save(c);
+                    current = startActivitySync(new Intent(c, type)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+                    waitForIdleSync();
+                    SystemClock.sleep(400);
+                    runOnMainSync(() -> {
+                        ViewGroup host = current.findViewById(android.R.id.content);
+                        android.widget.LinearLayout root = (android.widget.LinearLayout) host.getChildAt(0);
+                        View preview = WallpaperStage.previewStage(root);
+                        check(preview != null, "all three style pages register a preview stage");
+                        Rect bounds = new Rect();
+                        check(preview.getLocalVisibleRect(bounds),
+                                "image preview has visible bounds: " + type.getSimpleName());
+                        root.offsetDescendantRectToMyCoords(preview, bounds);
+                        Bitmap clear = background(current);
+                        int exposed = clear.getPixel(bounds.centerX(), bounds.centerY());
+                        clear.recycle();
+                        new MainStyle(44, 16, mode, 1, false, 0, 60).save(current);
+                        WallpaperStage.refresh(current);
+                        Bitmap covered = background(current);
+                        check(covered.getPixel(bounds.centerX(), bounds.centerY()) == exposed,
+                                "preview exposes selected image through both page veils");
+                        covered.recycle();
+                        if (current instanceof MainStyleActivity)
+                            check(preview.getBackground() != null,
+                                    "main preview paints its own list opacity above exposed image");
+                    });
+                }
             }
             result.putString("stream", "\nPASS: " + checks + " image background checks\n");
         } catch (Throwable error) {

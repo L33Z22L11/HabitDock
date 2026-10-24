@@ -10,6 +10,11 @@ import java.util.*;
 
 /** Main-only presentation settings with a read-only preview. */
 public final class MainStyleActivity extends ThemedActivity {
+    @Override
+    boolean nativeWallpaperPreview() {
+        return MainStyle.load(this).background == MainStyle.WALLPAPER;
+    }
+
     private MainStyle original, style;
     private int originalSeed, originalColorMode, originalScheme;
     private Button restore;
@@ -51,9 +56,8 @@ public final class MainStyleActivity extends ThemedActivity {
                 : new MainStyle(saved[0], saved[1], saved[2], saved[3], saved[4] != 0,
                         saved.length > 5 ? saved[5] : 80, saved.length > 6 ? saved[6] : 0);
         root = Ui.screen(this);
-        WallpaperStage.prepare(this, root);
         LinearLayout bar = Ui.toolbar(this, root, "主界面样式", true);
-        bar.setBackgroundColor(Ui.color(this, R.color.page));
+        bar.setBackgroundColor(Ui.pageSurface(this));
         restore = StyleRestore.button(this, () -> StyleRestore.show(this, "重置主界面样式",
                 () -> restoreStyle(original, originalColorMode, originalScheme, originalSeed, originalWallpaperImage,
                         originalCustomImage),
@@ -71,7 +75,7 @@ public final class MainStyleActivity extends ThemedActivity {
         content.addView(preview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
         body.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 24));
-        body.setBackgroundColor(Ui.color(this, R.color.page));
+        body.setBackgroundColor(Ui.pageSurface(this));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         body.addView(new AppearanceControls(this), new LinearLayout.LayoutParams(-1, -2));
         backgroundMode = new SlidingChoice(this, new String[]{"关", "原生", "兼容", "自定义"}, "background-mode-",
@@ -88,7 +92,7 @@ public final class MainStyleActivity extends ThemedActivity {
                 });
         backgroundMode.setTag("background-mode");
         backgroundMode.setContentDescription("壁纸背景");
-        backgroundMode.addRow(body, "壁纸背景");
+        backgroundMode.addRow(body, "壁纸背景", 0);
         transparencyControls = Ui.column(this);
         body.addView(transparencyControls);
         Ui.space(transparencyControls, 8);
@@ -127,7 +131,7 @@ public final class MainStyleActivity extends ThemedActivity {
         reasons = new SlidingChoice(this, MainStyle.REASONS, "main-reason-", index -> update(new MainStyle(style.iconDp,
                 style.labelSp, style.background, index, style.showHidden, style.transparency, style.blur)));
         reasons.setTag("main-reasons");
-        reasons.addRow(body, "推荐理由");
+        reasons.addRow(body, "推荐理由", 1);
         Ui.space(body, 12);
         hidden = new MaterialSwitch(this);
         hidden.setTag("main-show-hidden");
@@ -209,6 +213,7 @@ public final class MainStyleActivity extends ThemedActivity {
             return;
         importing = false;
         BackgroundImages.select(this, mode, id);
+        WidgetAppearance.request(this);
         bind(style);
         recreateForAppearance();
     }
@@ -258,7 +263,8 @@ public final class MainStyleActivity extends ThemedActivity {
         slider.setValue(min);
         slider.setTickVisible(false);
         Ui.styleSlider(slider);
-        Ui.sliderRow(body, label, slider, value);
+        Ui.sliderRow(body, label, slider, value,
+                tag.equals("main-icon-size") ? MainStyle.defaults().iconDp : MainStyle.defaults().labelSp);
         Ui.space(body, 12);
         return slider;
     }
@@ -270,6 +276,8 @@ public final class MainStyleActivity extends ThemedActivity {
     }
 
     private void update(MainStyle value) {
+        if (style.background != value.background)
+            WidgetAppearance.request(this);
         style = value;
         if (!value.sameAs(MainStyle.load(this)))
             value.save(this);
@@ -299,7 +307,6 @@ public final class MainStyleActivity extends ThemedActivity {
             value.save(this);
         transparencyAction.setText(getString(R.string.main_transparency_action, value.transparency));
         blurAction.setText(getString(R.string.main_blur_action, value.blur));
-        wallpaperBlur.set(wallpaperBlurRadius());
         blurAvailabilityChanged();
         transparencyControls.setVisibility(value.hasBackground() ? View.VISIBLE : View.GONE);
         backgroundMode.select(
@@ -324,7 +331,6 @@ public final class MainStyleActivity extends ThemedActivity {
         imageStatus.setVisibility(importing || (MainStyle.imageMode(value.background) && !BackgroundImages.exists(this))
                 ? View.VISIBLE
                 : View.GONE);
-        WallpaperStage.prepare(this, root);
         icons.setValue(value.iconDp);
         labels.setValue(value.labelSp);
         hidden.setChecked(value.showHidden);
@@ -339,11 +345,6 @@ public final class MainStyleActivity extends ThemedActivity {
                         || !BackgroundImages.selected(this, MainStyle.CUSTOM_IMAGE).equals(originalCustomImage));
         binding = false;
         renderPreview();
-    }
-
-    @Override
-    int wallpaperBlurRadius() {
-        return style != null && style.background == MainStyle.WALLPAPER ? style.blur : 0;
     }
 
     @Override
@@ -385,13 +386,8 @@ public final class MainStyleActivity extends ThemedActivity {
         if (adjustment != null)
             adjustment.dismiss();
         LinearLayout content = Ui.column(this);
-        content.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 4));
-        LinearLayout heading = new LinearLayout(this);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.addView(Ui.text(this, title, 14, R.color.ink), new LinearLayout.LayoutParams(0, -2, 1));
+        content.setPadding(Ui.dp(this, 16), Ui.dp(this, 4), Ui.dp(this, 16), Ui.dp(this, 4));
         TextView number = Ui.text(this, getString(R.string.widget_scale, value), 13, R.color.muted);
-        heading.addView(number);
-        content.addView(heading);
         Slider slider = new Slider(this);
         slider.setTag(tag);
         slider.setContentDescription(title);
@@ -406,9 +402,10 @@ public final class MainStyleActivity extends ThemedActivity {
             number.setText(getString(R.string.widget_scale, Math.round(selected)));
             changed.accept(Math.round(selected));
         });
-        content.addView(slider, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        Ui.sliderRow(content, title, slider, number,
+                tag.equals("main-blur") ? MainStyle.defaults().blur : MainStyle.defaults().transparency);
         int width = Math.min(Ui.dp(this, 280), getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32));
-        PopupWindow popup = new PopupWindow(content, width, -2, true);
+        PopupWindow popup = new PopupWindow(content, width, -2, false);
         popup.setBackgroundDrawable(Ui.shape(this, R.color.surface, 18));
         popup.setElevation(Ui.dp(this, 8));
         popup.setOutsideTouchable(true);
@@ -422,7 +419,7 @@ public final class MainStyleActivity extends ThemedActivity {
         adjustment = popup;
         activeAdjustment = slider;
         popup.showAsDropDown(anchor, (anchor.getWidth() - width) / 2, Ui.dp(this, 4));
-        slider.requestFocus();
+
     }
 
     @Override
@@ -434,8 +431,7 @@ public final class MainStyleActivity extends ThemedActivity {
 
     private void renderPreview() {
         preview.removeAllViews();
-        preview.setBackgroundColor(
-                style.hasBackground() ? style.wallpaperVeil() : style.page(this));
+        preview.setBackgroundColor(style.hasBackground() ? style.wallpaperVeil(this) : style.page(this));
         TextView heading = Ui.text(this, "预览", 12, R.color.muted);
         heading.setTextColor(style.ink(this));
         heading.setGravity(Gravity.CENTER);

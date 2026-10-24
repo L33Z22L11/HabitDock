@@ -77,11 +77,13 @@ final class PickerCell extends LinearLayout {
 
     private void selectionBackground(boolean selected) {
         // Inset only the painted card: keep the compact 48dp touch target intact.
-        android.graphics.drawable.Drawable card = Ui.shape(getContext(), selected ? R.color.soft : R.color.page, 8);
+        android.graphics.drawable.GradientDrawable card = new android.graphics.drawable.GradientDrawable();
+        card.setCornerRadius(Ui.dp(getContext(), 8));
+        card.setColor(selected ? Ui.selectionColor(getContext()) : Ui.pageSurface(getContext()));
         android.graphics.drawable.InsetDrawable inset = new android.graphics.drawable.InsetDrawable(card, 0,
                 Ui.dp(getContext(), 2), 0, Ui.dp(getContext(), 2));
         setBackground(new android.graphics.drawable.RippleDrawable(
-                ColorStateList.valueOf(Ui.color(getContext(), R.color.soft)), inset, null));
+                ColorStateList.valueOf(Ui.selectionColor(getContext())), inset, null));
         setPadding(Ui.dp(getContext(), 16), 0, 0, 0);
     }
 

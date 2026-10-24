@@ -223,7 +223,7 @@ public final class WallpaperBackRunner extends Instrumentation {
                 stale.eraseColor(Color.MAGENTA);
                 root.getBackground().draw(new Canvas(stale));
                 int pixel = stale.getPixel(stale.getWidth() / 2, stale.getHeight() / 2);
-                check(pixel == MainStyle.load(context).wallpaperVeil(),
+                check(pixel == MainStyle.load(context).wallpaperVeil(context),
                         "native wallpaper repaint replaces old text pixels and preserves only the configured veil");
                 stale.recycle();
             });

@@ -21,7 +21,7 @@ keytool -genkeypair -keystore habitdock-release.keystore -alias habitdock \
 
 妥善保留同一份发布密钥，以后更新需要相同签名。keystore、密码、Base64 都不要提交到 Git。可用 `base64 < habitdock-release.keystore` 生成 Secret 值；不要将输出粘贴到 issue、日志或文档。
 
-当前通过本机 ADB 安装的是个人 debug 签名版本。新的发布密钥签名 APK 无法直接覆盖它；这不影响继续使用本机 debug 包更新。要保持公开发布版本之间可覆盖升级，请固定发布签名，不要每次构建重新生成密钥。
+Debug 构建使用 `dev.habitdock.debug` 包名，正式构建使用 `dev.habitdock`，可同时安装。旧版使用正式包名的个人 debug 包仍需原签名才能覆盖更新；迁入新的 Debug 包需要单独复制数据。发布密钥必须固定并妥善备份，不要提交到仓库。
 
 实现依据：[Android 应用签名](https://developer.android.com/studio/publish/app-signing)、[GitHub Actions 权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)、[gh release create](https://cli.github.com/manual/gh_release_create)。
 

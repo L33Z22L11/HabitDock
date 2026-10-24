@@ -31,31 +31,44 @@ final class Ui {
         int resolved = attr == 0
                 ? c.getColor(resource)
                 : com.google.android.material.color.MaterialColors.getColor(c, attr, c.getColor(resource));
-        if (WallpaperStage.usesImage(c)) {
-            if (resource == R.color.page)
-                return androidx.core.graphics.ColorUtils.setAlphaComponent(resolved, 218);
-            if (resource == R.color.surface)
-                return androidx.core.graphics.ColorUtils.setAlphaComponent(resolved, 230);
-            if (resource == R.color.soft)
-                return androidx.core.graphics.ColorUtils.setAlphaComponent(resolved, 210);
-        }
         return resolved;
     }
 
     static void sliderRow(LinearLayout body, String title,
-            com.google.android.material.slider.Slider slider, TextView value) {
-        Context c = body.getContext();
-        LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView label = text(c, title, 14, R.color.ink);
-        row.addView(label, new LinearLayout.LayoutParams(dp(c, 84), -2));
+            com.google.android.material.slider.Slider slider, TextView value, float resetValue) {
+        sliderRow(body, title, slider, value, () -> resetValue);
+    }
+
+    static void sliderRow(LinearLayout body, String title,
+            com.google.android.material.slider.Slider slider, TextView value,
+            java.util.function.DoubleSupplier defaultValue) {
+        FormRow row = new FormRow(body.getContext(), title);
         styleSlider(slider);
-        row.addView(slider, new LinearLayout.LayoutParams(0, dp(c, 56), 1));
-        value.setTextColor(color(c, R.color.muted));
-        value.setTextSize(13);
-        value.setGravity(Gravity.END);
-        row.addView(value, new LinearLayout.LayoutParams(dp(c, 44), -2));
+        row.control(slider, FORM_ROW_HEIGHT, true, value);
+        row.reset(String.valueOf(slider.getTag()),
+                () -> Math.abs(slider.getValue() - defaultValue.getAsDouble()) > .001,
+                () -> slider.setValue((float) defaultValue.getAsDouble()));
+        slider.addOnChangeListener((view, current, user) -> row.refreshReset());
         body.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    static int pageSurface(Context context) {
+        return MainStyle.load(context).hasBackground()
+                ? android.graphics.Color.TRANSPARENT
+                : color(context, R.color.page);
+    }
+
+    static int selectionColor(Context context) {
+        return MainStyle.load(context).hasBackground()
+                ? androidx.core.graphics.ColorUtils.setAlphaComponent(color(context, R.color.accent), 48)
+                : color(context, R.color.soft);
+    }
+
+    static GradientDrawable panel(Context context, int radius) {
+        GradientDrawable background = shape(context, R.color.surface, radius);
+        if (MainStyle.load(context).hasBackground())
+            background.setAlpha(220);
+        return background;
     }
 
     static void styleSlider(com.google.android.material.slider.Slider slider) {
@@ -105,8 +118,10 @@ final class Ui {
         Context c = v.getContext();
         v.setStateListAnimator(null);
         v.setElevation(0);
-        v.setBackground(
-                new RippleDrawable(ColorStateList.valueOf(Ui.color(c, R.color.soft)), shape(c, color, 8), null));
+        GradientDrawable background = shape(c, color, 8);
+        if (MainStyle.load(c).hasBackground())
+            background.setColor(selected ? selectionColor(c) : pageSurface(c));
+        v.setBackground(new RippleDrawable(ColorStateList.valueOf(selectionColor(c)), background, null));
     }
 
     static void nativeTouch(View v) {
@@ -133,13 +148,7 @@ final class Ui {
 
     static LinearLayout screen(Activity a) {
         LinearLayout root = column(a);
-        MainStyle style = MainStyle.load(a);
-        if (WallpaperStage.usesImage(a))
-            WallpaperStage.prepareImage(a, root,
-                    a instanceof MainActivity ? style.toolbar(a) : android.graphics.Color.TRANSPARENT,
-                    a instanceof MainActivity ? style.wallpaperVeil() : Ui.color(a, R.color.page));
-        else
-            root.setBackgroundColor(Ui.color(a, R.color.page));
+        WallpaperStage.prepare(a, root);
         insets(root);
         a.setContentView(root);
         if (a instanceof ThemedActivity)
@@ -152,7 +161,7 @@ final class Ui {
     static void systemBars(Activity a) {
         boolean light = (a.getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        systemBars(a, color(a, R.color.page), light);
+        systemBars(a, pageSurface(a), light);
     }
 
     static void systemBars(Activity a, int color, boolean light) {

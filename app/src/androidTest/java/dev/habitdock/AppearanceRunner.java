@@ -236,7 +236,7 @@ public final class AppearanceRunner extends Instrumentation {
             runOnMainSync(() -> {
                 Slider control = new Slider(current);
                 LinearLayout form = Ui.column(current);
-                Ui.sliderRow(form, "Contrast", control, Ui.text(current, "100%", 13, R.color.muted));
+                Ui.sliderRow(form, "Contrast", control, Ui.text(current, "100%", 13, R.color.muted), 0f);
                 check(control.getTrackHeight() == Ui.dp(current, 16)
                         && control.getThumbHeight() == Ui.dp(current, 32), "thick track and shorter handle");
                 check(control.getLayoutParams().height - control.getThumbHeight() >= Ui.dp(current, 24),
@@ -273,8 +273,9 @@ public final class AppearanceRunner extends Instrumentation {
                         check(((TextView) view("recommend-time")).getCurrentTextColor() == Color.WHITE,
                                 "timestamp stays white after state update");
                         for (String tag : new String[]{"preview-time", "return-now", "open-settings"})
-                            check(((ImageButton) view(tag)).getImageTintList().getDefaultColor() == 0xebffffff,
-                                    "wallpaper toolbar stays white: " + tag);
+                            check(((ImageButton) view(tag)).getImageTintList().getDefaultColor() == Ui.color(current,
+                                    R.color.ink),
+                                    "wallpaper toolbar follows brightness: " + tag);
                     }
                     stamp.setLong(current, 0);
                     update.invoke(current);
@@ -290,7 +291,7 @@ public final class AppearanceRunner extends Instrumentation {
                         "wallpaper text has no shadow");
             });
             screenshot("app-style-wallpaper-white");
-            IconStyle packed = new IconStyle(20, false, 0, "dev.habitdock.test", 75);
+            IconStyle packed = new IconStyle(20, false, 0, getContext().getPackageName(), 75);
             check(IconPacks.loadSource(c, c.getPackageName(), packed.pack).themed, "test pack covers main app");
             check(!IconPacks.loadSource(c, "com.android.settings", packed.pack).themed,
                     "missing pack drawable counts as fallback");

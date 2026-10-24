@@ -1,6 +1,6 @@
 <resources>
-    <item component="ComponentInfo{dev.habitdock/.OtherActivity}" drawable="pack_blue" />
-    <item component="ComponentInfo{dev.habitdock/dev.habitdock.MainActivity}" drawable="pack_red" />
+    <item component="ComponentInfo{dev.habitdock.debug/dev.habitdock.OtherActivity}" drawable="pack_blue" />
+    <item component="ComponentInfo{dev.habitdock.debug/dev.habitdock.MainActivity}" drawable="pack_red" />
     <item component="invalid" drawable="pack_red" />
     <item component="ComponentInfo{com.android.settings/.Settings}" drawable="missing_drawable" />
 </resources>

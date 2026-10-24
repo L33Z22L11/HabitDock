@@ -12,11 +12,11 @@ final class AppearanceControls extends LinearLayout {
         SlidingChoice mode = new SlidingChoice(activity, new String[]{"系统", "浅色", "深色"},
                 "app-color-mode-", selected -> configure(activity, selected, Appearance.scheme(activity)));
         mode.select(Appearance.colorMode(activity), false);
-        mode.addRow(this, "明暗模式");
+        mode.addRow(this, "明暗模式", 0);
         SlidingChoice scheme = new SlidingChoice(activity, new String[]{"默认", "自动", "自定义"},
                 "app-scheme-", selected -> configure(activity, Appearance.colorMode(activity), selected));
         scheme.select(Appearance.scheme(activity), false);
-        scheme.addRow(this, "主题配色");
+        scheme.addRow(this, "主题配色", 1);
         if (Appearance.scheme(activity) == 2) {
             ColorSettingRow color = new ColorSettingRow(activity, "应用主色",
                     () -> IconColorDialog.show(activity, "应用主色", Appearance.seed(activity), false, false, value -> {

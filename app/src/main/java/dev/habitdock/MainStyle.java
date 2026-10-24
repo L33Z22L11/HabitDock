@@ -6,8 +6,7 @@ import androidx.core.graphics.ColorUtils;
 import java.util.*;
 
 /**
- * Main-screen presentation only: never changes ranking, privacy, or widget
- * allocation.
+ * Shared page background and main-list presentation; never changes ranking.
  */
 final class MainStyle {
     static final int APP = 0, WALLPAPER = 2, IMAGE = 3, CUSTOM_IMAGE = 4;
@@ -16,7 +15,7 @@ final class MainStyle {
     final boolean showHidden;
 
     MainStyle(int iconDp, int labelSp, int background, int reasons, boolean showHidden) {
-        this(iconDp, labelSp, background, reasons, showHidden, 80);
+        this(iconDp, labelSp, background, reasons, showHidden, 20);
     }
 
     MainStyle(int iconDp, int labelSp, int background, int reasons, boolean showHidden, int transparency) {
@@ -77,23 +76,29 @@ final class MainStyle {
         return Ui.color(context, R.color.page);
     }
 
-    int wallpaperVeil() {
-        return ColorUtils.setAlphaComponent(Color.BLACK, Math.round(255 * (100 - transparency) / 100f));
+    int wallpaperVeil(Context context) {
+        return veil(context, Math.round(255 * (100 - transparency) / 100f));
+    }
+
+    int extraWallpaperVeil(Context context) {
+        return veil(context, 204);
+    }
+
+    private int veil(Context context, int alpha) {
+        return ColorUtils.setAlphaComponent(page(context), alpha);
     }
 
     int toolbar(Context context) {
         return hasBackground()
-                ? 0x12000000
+                ? Color.TRANSPARENT
                 : page(context);
     }
 
     int surface(Context context) {
-        return ColorUtils.setAlphaComponent(Ui.color(context, R.color.surface), hasBackground() ? 225 : 255);
+        return Ui.color(context, R.color.surface);
     }
 
     int ink(Context context) {
-        if (hasBackground())
-            return ColorUtils.setAlphaComponent(Color.WHITE, 235);
         return Ui.color(context, R.color.ink);
     }
 
@@ -103,7 +108,7 @@ final class MainStyle {
 
     int rowDp(Context context) {
         float scale = Math.max(1, context.getResources().getConfiguration().fontScale);
-        float textHeight = (labelSp * 1.25f + (reasons == 0 ? 0 : (reasons == 2 ? 2 : 1) * 12 * 1.25f + 4)) * scale;
+        float textHeight = (labelSp * 1.25f + (reasons == 0 ? 0 : 2 * 12 * 1.25f + 4)) * scale;
         return Math.round(Math.max(68, Math.max(iconDp + 24, textHeight + 20)));
     }
 

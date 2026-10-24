@@ -121,7 +121,8 @@ final class WallpaperBack {
         originalWallpaper = (activity.getWindow().getAttributes().flags
                 & WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER) != 0;
         originalFormat = activity.getWindow().getAttributes().format;
-        activity.getWindow().setFormat(PixelFormat.TRANSLUCENT);
+        if (originalFormat != PixelFormat.TRANSLUCENT)
+            activity.getWindow().setFormat(PixelFormat.TRANSLUCENT);
         if (!originalWallpaper)
             activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
         activity.wallpaperBlur.set(Math.max(activity.wallpaperBlurRadius(), previous.wallpaperBlurRadius()));
@@ -202,7 +203,8 @@ final class WallpaperBack {
                 host.removeView(layer);
             if (content != null)
                 content.setVisibility(View.VISIBLE);
-            activity.getWindow().setFormat(originalFormat);
+            if (activity.getWindow().getAttributes().format != originalFormat)
+                activity.getWindow().setFormat(originalFormat);
             if (!originalWallpaper)
                 activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
         }
@@ -244,7 +246,6 @@ final class WallpaperBack {
     @android.annotation.SuppressLint("ViewConstructor") // Scene data is supplied by the owning Activity.
     static final class Scene extends View {
         private final Bitmap behind, front;
-        private final View behindView, frontView;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Path boundary = new Path();
         private final RectF page = new RectF(), canvasBounds = new RectF();
@@ -254,30 +255,18 @@ final class WallpaperBack {
             super(context);
             this.behind = behind;
             this.front = front;
-            behindView = frontView = null;
             this.direction = direction;
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
 
         Scene(android.content.Context context, View behind, View front, float direction) {
-            super(context);
-            this.behind = this.front = null;
-            behindView = behind;
-            frontView = front;
-            this.direction = direction;
-            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            this(context, snapshot(behind), snapshot(front), direction);
         }
 
-        private void drawFrame(Canvas canvas, View view, Bitmap bitmap, RectF bounds) {
-            if (view == null) {
-                canvas.drawBitmap(bitmap, null, bounds, paint);
-                return;
-            }
-            int save = canvas.save();
-            canvas.translate(bounds.left, bounds.top);
-            canvas.scale(bounds.width() / view.getWidth(), bounds.height() / view.getHeight());
-            view.draw(canvas);
-            canvas.restoreToCount(save);
+        private static Bitmap snapshot(View view) {
+            Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+            view.draw(new Canvas(bitmap));
+            return bitmap;
         }
 
         @Override
@@ -295,11 +284,11 @@ final class WallpaperBack {
             int save = canvas.save();
             canvas.clipOutPath(boundary);
             canvasBounds.set(0, 0, width, height);
-            drawFrame(canvas, behindView, behind, canvasBounds);
+            canvas.drawBitmap(behind, null, canvasBounds, paint);
             canvas.restoreToCount(save);
             save = canvas.save();
             canvas.clipPath(boundary);
-            drawFrame(canvas, frontView, front, page);
+            canvas.drawBitmap(front, null, page, paint);
             canvas.restoreToCount(save);
         }
     }

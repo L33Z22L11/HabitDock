@@ -9,7 +9,7 @@ final class WallpaperBlur {
     private final ThemedActivity activity;
     private final Consumer<Boolean> listener;
     private boolean listening;
-    private int radius;
+    private int radius, appliedRadius = -1;
 
     WallpaperBlur(ThemedActivity activity) {
         this.activity = activity;
@@ -43,20 +43,19 @@ final class WallpaperBlur {
         apply();
     }
 
+    int appliedRadius() {
+        return Math.max(0, appliedRadius);
+    }
+
     private void apply() {
         if (Build.VERSION.SDK_INT < 31)
             return;
-        int effective = available() ? radius : 0;
-        Window window = activity.getWindow();
-        WindowManager.LayoutParams params = window.getAttributes();
-        boolean enabled = (params.flags & WindowManager.LayoutParams.FLAG_BLUR_BEHIND) != 0;
-        if (params.getBlurBehindRadius() == effective && enabled == (effective > 0))
+        int effective = available() && activity.wallpaperScene() ? radius : 0;
+        if (effective == appliedRadius)
             return;
-        params.setBlurBehindRadius(effective);
-        if (effective > 0)
-            params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-        else
-            params.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-        window.setAttributes(params);
+        // Blur this window's background, not every surface behind a focusable window.
+        // The drawable stays owned by this page when a dialog takes focus.
+        activity.getWindow().setBackgroundBlurRadius(effective);
+        appliedRadius = effective;
     }
 }

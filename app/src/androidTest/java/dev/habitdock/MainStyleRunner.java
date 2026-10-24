@@ -145,9 +145,9 @@ public final class MainStyleRunner extends Instrumentation {
             check(edited.iconDp == 60 && edited.labelSp == 20 && edited.background == 2 && edited.showHidden,
                     "controls save immediately");
             check(edited.transparency == 65, "wallpaper transparency saved with other controls");
-            check(android.graphics.Color.alpha(edited.wallpaperVeil()) == 89, "veil matches transparency");
-            check(edited.ink(context) == 0xebffffff, "wallpaper labels use translucent white");
-            check(new MainStyle(44, 16, 2, 1, false, 100).wallpaperVeil() == 0,
+            check(android.graphics.Color.alpha(edited.wallpaperVeil(context)) == 89, "veil matches transparency");
+            check(edited.ink(current) == Ui.color(current, R.color.ink), "wallpaper labels follow page brightness");
+            check(new MainStyle(44, 16, 2, 1, false, 100).wallpaperVeil(context) >>> 24 == 0,
                     "fully transparent wallpaper has no veil");
             check(widget
                     .sameAs(WidgetPreferences.load(context, android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID))
@@ -234,7 +234,7 @@ public final class MainStyleRunner extends Instrumentation {
                     check(!home.isFinishing(), "same home survives live background changes");
                 });
             }
-            check(MainStyle.defaults().rowDp(context) == 68, "default rows use moderate even spacing");
+            check(MainStyle.defaults().rowDp(context) == 74, "reason rows reserve stable two-line spacing");
             runOnMainSync(() -> {
                 AppTile bare = new AppTile(home);
                 bare.bind(new Repository.App("visible", "Visible"), new Predictor.Prediction("visible", 1, "常用"),

@@ -119,7 +119,7 @@ public final class MainActivity extends ThemedActivity {
         refreshButton.setContentDescription(description);
         refreshButton.setTooltipText(description);
         time.setTextColor(wallpaper
-                ? android.graphics.Color.WHITE
+                ? style.ink(this)
                 : Ui.color(this, active ? R.color.accent : R.color.muted));
     }
 
@@ -149,15 +149,7 @@ public final class MainActivity extends ThemedActivity {
     }
 
     @Override
-    int wallpaperBlurRadius() {
-        MainStyle current = MainStyle.load(this);
-        return current.background == MainStyle.WALLPAPER ? current.blur : 0;
-    }
-
-    @Override
-    void prepareReturnPreview() {
-        if (recreateForAppearance())
-            return;
+    void refreshPageContent() {
         applyMainAppearance();
         if (lastData != null)
             recommendations.show(lastData);
@@ -167,7 +159,6 @@ public final class MainActivity extends ThemedActivity {
         if (root == null)
             return;
         MainStyle style = MainStyle.load(this);
-        wallpaperBlur.set(wallpaperBlurRadius());
         String key = style.background + ":" + style.transparency + ":" + style.page(this) + ":" + style.ink(this)
                 + ":" + style.blur + ":" + BackgroundImages.selected(this);
         if (key.equals(appliedMainAppearance))
@@ -180,32 +171,16 @@ public final class MainActivity extends ThemedActivity {
                             ? android.graphics.Color.BLACK
                             : style.page(this))
                     .build());
-        if (style.hasBackground()) {
-            WallpaperStage.prepare(this, root, style.toolbar(this), style.wallpaperVeil());
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
-            getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-            root.setBackgroundColor(style.page(this));
-        }
         recommendations.applyScrollbar(style);
         applySystemBars();
         bar.setBackgroundColor(style.toolbar(this));
         title.setTextColor(style.ink(this));
-        time.setTextColor(style.hasBackground() ? android.graphics.Color.WHITE : style.ink(this));
+        time.setTextColor(style.ink(this));
         empty.setTextColor(style.ink(this));
         for (int i = 0; i < actions.getChildCount(); i++)
             if (actions.getChildAt(i) instanceof ImageButton)
                 ((ImageButton) actions.getChildAt(i))
                         .setImageTintList(android.content.res.ColorStateList.valueOf(style.ink(this)));
-    }
-
-    @Override
-    void applySystemBars() {
-        MainStyle style = MainStyle.load(this);
-        if (style.hasBackground())
-            Ui.systemBars(this, style.toolbar(this), false);
-        else
-            Ui.systemBars(this);
     }
 
     @Override

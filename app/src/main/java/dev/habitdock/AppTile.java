@@ -67,6 +67,10 @@ final class AppTile extends LinearLayout {
         String reason = main.reason(prediction);
         detail.setText(reason);
         detail.setMaxLines(main.reasons == 2 ? 2 : 1);
+        // Keep the title and preview geometry stable when changing reason detail.
+        android.view.ViewGroup.LayoutParams reasonSpace = detail.getLayoutParams();
+        reasonSpace.height = detail.getLineHeight() * 2 + detail.getPaddingTop() + detail.getPaddingBottom();
+        detail.setLayoutParams(reasonSpace);
         detail.setTextColor(ColorUtils.setAlphaComponent(main.ink(context), 190));
         detail.setVisibility(reason.isEmpty() ? GONE : VISIBLE);
         IconLoader.bind(context, app.pkg, icon, style);

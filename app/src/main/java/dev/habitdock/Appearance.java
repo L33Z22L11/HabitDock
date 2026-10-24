@@ -72,9 +72,9 @@ final class Appearance {
     }
 
     static Integer automaticSeed(Context context) {
-        if (MainStyle.load(context).background != MainStyle.CUSTOM_IMAGE)
+        if (!MainStyle.imageMode(MainStyle.load(context).background))
             return null;
-        return BackgroundImages.paletteSeed(context, BackgroundImages.selected(context, MainStyle.CUSTOM_IMAGE));
+        return BackgroundImages.paletteSeed(context, BackgroundImages.selected(context));
     }
 
     static void apply(Activity activity) {
@@ -84,7 +84,7 @@ final class Appearance {
         if (source != null)
             DynamicColors.applyToActivityIfAvailable(activity,
                     new DynamicColorsOptions.Builder().setContentBasedSource(source).build());
-        else if (scheme(activity) == 1)
+        else if (scheme(activity) == 1 && !MainStyle.imageMode(MainStyle.load(activity).background))
             DynamicColors.applyToActivityIfAvailable(activity);
     }
 }

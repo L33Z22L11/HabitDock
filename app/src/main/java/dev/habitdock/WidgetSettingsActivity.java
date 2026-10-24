@@ -116,9 +116,8 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         if (!validSelection)
             selectedId = initial;
         LinearLayout root = Ui.screen(this);
-        WallpaperStage.prepare(this, root);
         LinearLayout bar = Ui.toolbar(this, root, "组件样式", true);
-        bar.setBackgroundColor(Ui.color(this, R.color.page));
+        bar.setBackgroundColor(Ui.pageSurface(this));
         restore = StyleRestore.button(this,
                 () -> StyleRestore.show(this, "恢复当前组件外观",
                         () -> restoreAppearance(originals.get(selectedId), originalThemes.get(selectedId)),
@@ -133,7 +132,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         LinearLayout selector = new LinearLayout(this);
         selector.setGravity(Gravity.CENTER_VERTICAL);
         selector.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
-        selector.setBackgroundColor(Ui.color(this, R.color.page));
+        selector.setBackgroundColor(Ui.pageSurface(this));
         body.addView(selector, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
         if (!configuring) {
             target = spinner();
@@ -172,13 +171,14 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         hero.addView(preview, previewParams);
         LinearLayout controls = Ui.column(this);
         controls.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 20));
-        controls.setBackgroundColor(Ui.color(this, R.color.page));
+        controls.setBackgroundColor(Ui.pageSurface(this));
         body.addView(controls, new LinearLayout.LayoutParams(-1, -2, 1));
         themeControls = new WidgetThemeControls(this, this::applyTheme);
         controls.addView(themeControls, new LinearLayout.LayoutParams(-1, -2));
         Ui.space(controls, 16);
         LinearLayout layoutCard = Ui.column(this);
-        layoutCard.setBackground(Ui.shape(this, R.color.surface, 24));
+        if (!MainStyle.load(this).hasBackground())
+            layoutCard.setBackground(Ui.shape(this, R.color.surface, 24));
         layoutCard.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
         controls.addView(layoutCard, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout expand = new LinearLayout(this);
@@ -245,7 +245,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         scale.addOnChangeListener(seekListener);
         if (!configuring) {
             LinearLayout footer = Ui.column(this);
-            footer.setBackgroundColor(Ui.color(this, R.color.page));
+            footer.setBackgroundColor(Ui.pageSurface(this));
             footer.setPadding(Ui.dp(this, 24), Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 12));
             addButton = new com.google.android.material.button.MaterialButton(this);
             addButton.setTag("widget-add");
@@ -287,12 +287,19 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         slider.setStepSize(1);
         slider.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
         value.setTag(tag + "-value");
-        Ui.sliderRow(body, label, slider, value);
+        Ui.sliderRow(body, label, slider, value, () -> {
+            WidgetPreferences defaults = WidgetPreferences.defaults(this, selectedId);
+            return tag.equals("widget-columns")
+                    ? defaults.columns
+                    : tag.equals("widget-rows") ? defaults.rows : defaults.percent;
+        });
         return slider;
     }
 
     private Spinner spinner() {
-        Spinner view = new Spinner(this);
+        Spinner view = new Spinner(this, null, 0, Spinner.MODE_DROPDOWN);
+        Ui.nativeTouch(view);
+        view.setPopupBackgroundDrawable(Ui.panel(this, 16));
         BaseAdapter adapter = new BaseAdapter() {
             public int getCount() {
                 return targetIds.length;
@@ -315,11 +322,11 @@ public final class WidgetSettingsActivity extends ThemedActivity {
             }
 
             public View getView(int position, View convertView, ViewGroup parent) {
-                return targetRow(position);
+                return targetRow(position, false);
             }
 
             public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                return targetRow(position);
+                return targetRow(position, true);
             }
         };
         view.setAdapter(adapter);
@@ -336,7 +343,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         return WidgetNames.label(this, id);
     }
 
-    private View targetRow(int position) {
+    private View targetRow(int position, boolean dropdown) {
         int id = targetIds[position];
         if (id <= DEFAULT_HEADER) {
             TextView header = Ui.text(this, targetLabel(id), 12, R.color.muted);
@@ -358,6 +365,15 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         text.setEllipsize(TextUtils.TruncateAt.END);
         text.setPadding(Ui.dp(this, 10), 0, 0, 0);
         row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        if (dropdown && id == selectedId)
+            row.setBackgroundColor(Ui.selectionColor(this));
+        if (!dropdown) {
+            ImageView arrow = new ImageView(this);
+            arrow.setImageResource(R.drawable.ic_chevron);
+            arrow.setRotation(90);
+            arrow.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.color(this, R.color.muted)));
+            row.addView(arrow, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
+        }
         return row;
     }
 

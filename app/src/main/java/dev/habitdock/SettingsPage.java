@@ -44,21 +44,21 @@ final class SettingsPage extends ScrollView {
         row(R.drawable.ic_pin, "置顶应用", "已置顶 " + Repository.selection(activity, "pinned").size() + " 个",
                 () -> activity.startActivity(new Intent(activity, AppPickerActivity.class).putExtra("mode", "pinned")))
                 .setTag("open-pinned");
-        row(R.drawable.ic_list, "推荐数量", RecommendationLimit.load(activity) + " 个 · 置顶另计",
+        row(R.drawable.ic_list, "推荐数量", RecommendationLimit.load(activity) + " 个（置顶另计）",
                 this::chooseRecommendationLimit).setTag("recommendation-limit");
         row(R.drawable.ic_refresh, "更新频率", intervalLabel(RefreshPolicy.minutes(activity)),
                 this::chooseRefreshInterval).setTag("refresh-interval");
         section("样式设置");
-        row(R.drawable.ic_shapes, "图标样式", "图标包、圆角与填充",
+        row(R.drawable.ic_shapes, "图标样式", "",
                 () -> activity.startActivity(new Intent(activity, IconStyleActivity.class))).setTag("open-icon-style");
         widgetStyleRow();
-        row(R.drawable.ic_list, "主界面样式", "主题、壁纸、文字与推荐理由",
+        row(R.drawable.ic_list, "主界面样式", "",
                 () -> activity.startActivity(new Intent(activity, MainStyleActivity.class))).setTag("open-main-style");
         section("权限与数据");
         row(R.drawable.ic_clock, "使用情况访问", UsageStore.permitted(activity) ? "已开启" : "未开启", () -> permission(activity));
         row(R.drawable.ic_delete, "重新学习", "清除使用记录", this::reset);
         section("关于");
-        row(R.drawable.ic_code, "开源仓库", "GitHub · L33Z22L11 / HabitDock",
+        row(R.drawable.ic_code, "开源仓库", "L33Z22L11/HabitDock",
                 () -> openWeb(AppUpdates.REPOSITORY)).setTag("open-repository");
         LinearLayout about = row(R.drawable.ic_info, aboutTitle(), learningText(), this::showAbout);
         aboutRow = about;

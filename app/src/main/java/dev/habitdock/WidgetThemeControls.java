@@ -28,7 +28,8 @@ final class WidgetThemeControls extends LinearLayout {
         this.changed = changed;
         setOrientation(VERTICAL);
         setPadding(Ui.dp(activity, 16), Ui.dp(activity, 20), Ui.dp(activity, 16), Ui.dp(activity, 12));
-        setBackground(Ui.shape(activity, R.color.surface, 24));
+        if (!MainStyle.load(activity).hasBackground())
+            setBackground(Ui.shape(activity, R.color.surface, 24));
         TextView title = Ui.text(activity, "主题", 16, R.color.ink);
         Ui.title(title);
         addView(title);
@@ -110,7 +111,7 @@ final class WidgetThemeControls extends LinearLayout {
             if (!binding)
                 update(new WidgetTheme(theme.mode, Math.round(value), theme.color));
         });
-        Ui.sliderRow(this, "背景透明度", opacity, opacityValue);
+        Ui.sliderRow(this, "背景透明度", opacity, opacityValue, WidgetTheme.defaults().transparency);
         bind(theme);
     }
 

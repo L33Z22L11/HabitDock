@@ -57,6 +57,7 @@ final class AppPickerView extends LinearLayout {
         list.setSelector(android.R.color.transparent);
         list.setPadding(Ui.dp(activity, 8), 0, Ui.dp(activity, 8), Ui.dp(activity, 8));
         list.setClipToPadding(false);
+        list.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
         adapter = new BaseAdapter() {
             public int getCount() {
                 return (visible.size() + columns - 1) / columns;

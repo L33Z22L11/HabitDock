@@ -1,5 +1,5 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="?attr/colorOnSurfaceVariant" />
+    <solid android:color="@color/scrollbar_tint" />
     <corners android:radius="2dp" />
     <size android:width="3dp" android:height="3dp" />
 </shape>

@@ -2,6 +2,8 @@
 
 使用 JDK 17、Gradle Wrapper、Android SDK 35 / Build Tools 35.0.0，不依赖全局 Gradle，也不需要修改 shell 启动文件。
 
+Debug 包名为 `dev.habitdock.debug`，显示名为「知时 HabitDock Debug」，可与 `dev.habitdock` 正式版共存。两者的数据、权限和桌面组件分别管理。
+
 ## 格式
 
 先运行 `./gradlew spotlessApply`，提交前运行 `./gradlew spotlessCheck`。Eclipse JDT 配置在 `config/eclipse-java.xml`，可以由 Eclipse／支持 Eclipse 配置的编辑器导入；普通编辑器遵守 `.editorconfig` 即可。格式化不自动整理 import 或排序成员。
@@ -19,21 +21,21 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ```sh
 adb -s <emulator> install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s <emulator> shell appops set dev.habitdock GET_USAGE_STATS allow
-adb -s <emulator> shell am instrument -w dev.habitdock.test/dev.habitdock.SmokeRunner
+adb -s <emulator> shell appops set dev.habitdock.debug GET_USAGE_STATS allow
+adb -s <emulator> shell am instrument -w dev.habitdock.debug.test/dev.habitdock.SmokeRunner
 
 ./gradlew assembleDebugAndroidTest -PtouchTests
 adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s <emulator> shell am instrument --no-hidden-api-checks -w dev.habitdock.test/dev.habitdock.PickerTouchRunner
+adb -s <emulator> shell am instrument --no-hidden-api-checks -w dev.habitdock.debug.test/dev.habitdock.PickerTouchRunner
 
 ./gradlew assembleDebugAndroidTest -PtestRunner=dev.habitdock.StyleSettingsRunner
 adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s <emulator> shell appwidget grantbind --package dev.habitdock --user 0
-adb -s <emulator> shell am instrument -w dev.habitdock.test/dev.habitdock.StyleSettingsRunner
+adb -s <emulator> shell appwidget grantbind --package dev.habitdock.debug --user 0
+adb -s <emulator> shell am instrument -w dev.habitdock.debug.test/dev.habitdock.StyleSettingsRunner
 
 ./gradlew assembleDebugAndroidTest -PtestRunner=dev.habitdock.SettingsPageRunner
 adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s <emulator> shell am instrument -w dev.habitdock.test/dev.habitdock.SettingsPageRunner
+adb -s <emulator> shell am instrument -w dev.habitdock.debug.test/dev.habitdock.SettingsPageRunner
 ```
 
 WidgetSizingRunner 可通过 `-PtestRunner=dev.habitdock.WidgetSizingRunner` 构建测试包，验证图标在实际容器内的居中与相对缩放。WidgetDiagnosticRunner 默认只读输出桌面上报尺寸和是否参与列表；显式传入 `hostHints`（`组件ID=宿主包名`，逗号分隔）可补录已由 ADB 独立核实的旧组件归属，只修改所属知时实例的本地宿主提示，不改变系统绑定。
@@ -53,3 +55,5 @@ SettingsPageRunner 检查上限输入与保存、更新弹窗和外链目标，�
 PickerTouchRunner 与 WallpaperBackRunner 使用 Android 测试专用触摸注入接口，避免等待窗口动画造成事件时间戳过期；仅在模拟器用 `am instrument --no-hidden-api-checks -w` 运行。应用本身不使用隐藏 API。
 
 BackgroundImageRunner 仅在可清空的模拟器运行，检查图片导入、原图保留、图片来源隔离、模糊持久化、图片页面背景、桌面预览区域的原生壁纸，以及混合背景下的返回回调策略。通过 `-PtestRunner=dev.habitdock.BackgroundImageRunner` 构建；不能在用户手机运行。
+
+FormAppearanceRunner 仅在可重置模拟器运行，覆盖所有页面的原生壁纸遮罩、表单重置与窄屏布局，并在悬浮窗保持打开时比较模糊从 0 调回后的实际截图。使用 `-PtestRunner=dev.habitdock.FormAppearanceRunner` 构建后，执行 `adb -s <emulator> shell am instrument -w dev.habitdock.debug.test/dev.habitdock.FormAppearanceRunner`。

@@ -21,8 +21,6 @@ public final class IconStyleActivity extends ThemedActivity {
     private Slider roundness, fallbackScale, exponent, saturation, brightness, contrast;
     private TextView saturationValue, brightnessValue, contrastValue;
     private LinearLayout fallbackSection;
-    private TextView fallbackHeader;
-    private boolean fallbackExpanded = true;
     private SlidingChoice continuous, filling;
     private LinearLayout exponentControls;
     private TextView exponentValue;
@@ -50,13 +48,11 @@ public final class IconStyleActivity extends ThemedActivity {
                         state.getBoolean("original-continuous", false), state.getInt("original-exponent", 40),
                         state.getInt("original-saturation", 100), state.getInt("original-brightness", 100),
                         state.getInt("original-contrast", 100));
-        fallbackExpanded = state == null || state.getBoolean("fallback-expanded", true);
         fillColor = style.fillColor;
         pack = style.pack;
         fill = style.fillBackground;
         LinearLayout root = Ui.screen(this), bar = Ui.toolbar(this, root, "图标样式", true);
-        WallpaperStage.prepare(this, root);
-        bar.setBackgroundColor(Ui.color(this, R.color.page));
+        bar.setBackgroundColor(Ui.pageSurface(this));
         restore = StyleRestore.button(this,
                 () -> StyleRestore.show(this, "恢复图标样式", () -> bind(original), () -> bind(IconStyle.defaults())));
         restore.setTag("icon-style-save");
@@ -86,7 +82,7 @@ public final class IconStyleActivity extends ThemedActivity {
         secondPreview.setSamples(preview.layout.capacity());
         hero.addView(secondPreview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
-        body.setBackgroundColor(Ui.color(this, R.color.page));
+        body.setBackgroundColor(Ui.pageSurface(this));
         body.setPadding(Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 24));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         LinearLayout packRow = new LinearLayout(this);
@@ -114,66 +110,12 @@ public final class IconStyleActivity extends ThemedActivity {
             changed();
         });
         filling.setTag("icon-fill-mode");
-        filling.addRow(body, "图标填充");
+        filling.addRow(body, "图标填充", 0);
         Ui.space(body, 16);
-        fallbackSection = Ui.column(this);
-        body.addView(fallbackSection);
-        fallbackHeader = Ui.text(this, "", 14, R.color.ink);
-        fallbackHeader.setTag("icon-fallback-toggle");
-        fallbackHeader.setGravity(Gravity.CENTER_VERTICAL);
-        fallbackHeader.setMinimumHeight(Ui.dp(this, 48));
-        Ui.nativeTouch(fallbackHeader);
-        fallbackHeader.setOnClickListener(v -> {
-            fallbackExpanded = !fallbackExpanded;
-            updateFallbackSection();
-        });
-        fallbackSection.addView(fallbackHeader, new LinearLayout.LayoutParams(-1, -2));
-        fallbackControls = Ui.column(this);
-        fallbackSection.addView(fallbackControls);
-        saturationValue = Ui.text(this, "", 13, R.color.muted);
-        saturationValue.setTag("icon-saturation-value");
-        saturation = new Slider(this);
-        saturation.setTag("icon-saturation");
-        saturation.setContentDescription("未适配图标饱和度");
-        saturation.setValueTo(200);
-        saturation.setStepSize(1);
-        saturation.setValue(style.saturation);
-        Ui.sliderRow(fallbackControls, "饱和度", saturation, saturationValue);
-
-        brightnessValue = Ui.text(this, "", 13, R.color.muted);
-        brightnessValue.setTag("icon-brightness-value");
-        brightness = new Slider(this);
-        brightness.setTag("icon-brightness");
-        brightness.setContentDescription("未适配图标明度");
-        brightness.setValueTo(200);
-        brightness.setStepSize(1);
-        brightness.setValue(style.brightness);
-        Ui.sliderRow(fallbackControls, "明度", brightness, brightnessValue);
-        contrastValue = Ui.text(this, "", 13, R.color.muted);
-        contrastValue.setTag("icon-contrast-value");
-        contrast = new Slider(this);
-        contrast.setTag("icon-contrast");
-        contrast.setContentDescription("未适配图标对比度");
-        contrast.setValueTo(200);
-        contrast.setStepSize(1);
-        contrast.setValue(style.contrast);
-        Ui.sliderRow(fallbackControls, "对比度", contrast, contrastValue);
-        fallbackValue = Ui.text(this, "", 14, R.color.ink);
-        fallbackScale = new Slider(this);
-        fallbackScale.setTag("icon-fallback-scale");
-        fallbackScale.setContentDescription("未适配图标缩放");
-        fallbackScale.setValueFrom(50);
-        fallbackScale.setValueTo(100);
-        fallbackScale.setStepSize(1);
-        fallbackScale.setTickVisible(false);
-        fallbackScale.setValue(style.fallbackScale);
-        Ui.sliderRow(fallbackControls, "缩放", fallbackScale, fallbackValue);
-        fallbackControls.addView(Ui.text(this, "仅调整图标包未覆盖的应用，颜色调节均以 100% 为原色", 12, R.color.muted));
-        Ui.space(fallbackControls, 16);
         continuous = new SlidingChoice(this, new String[]{"普通圆角", "超椭圆"}, "icon-corner-", i -> changed());
         continuous.setTag("icon-corner-mode");
         continuous.select(style.continuous ? 1 : 0, false);
-        continuous.addRow(body, "圆角模式");
+        continuous.addRow(body, "圆角模式", 0);
         Ui.space(body, 12);
         exponentControls = Ui.column(this);
         exponentValue = Ui.text(this, "", 14, R.color.ink);
@@ -185,20 +127,66 @@ public final class IconStyleActivity extends ThemedActivity {
         exponent.setStepSize(.1f);
         exponent.setTickVisible(false);
         exponent.setValue(style.exponent / 10f);
-        Ui.sliderRow(exponentControls, "超椭圆参数", exponent, exponentValue);
-        exponentControls.addView(Ui.text(this, "超椭圆轮廓：参数越小越圆，越大越方", 12, R.color.muted));
+        Ui.sliderRow(exponentControls, "超椭圆参数", exponent, exponentValue, IconStyle.defaults().exponent / 10f);
         body.addView(exponentControls);
         roundnessLabel = Ui.text(this, "", 14, R.color.ink);
         roundness = new Slider(this);
         roundness.setTag("icon-roundness");
-        roundness.setContentDescription("图标圆角");
+        roundness.setContentDescription("圆角比例");
         roundness.setValueTo(100);
         roundness.setStepSize(1);
         roundness.setTickVisible(false);
         roundness.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
         roundness.setValue(style.roundness);
-        Ui.sliderRow(body, "图标圆角", roundness, roundnessLabel);
+        Ui.sliderRow(body, "圆角比例", roundness, roundnessLabel, IconStyle.defaults().roundness);
         Ui.space(body, 16);
+        fallbackSection = Ui.column(this);
+        body.addView(fallbackSection);
+        TextView fallbackHeader = Ui.text(this, "未适配图标样式", 12, R.color.muted);
+        fallbackHeader.setTag("icon-fallback-heading");
+        fallbackHeader.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        fallbackSection.addView(fallbackHeader, new LinearLayout.LayoutParams(-1, -2));
+        fallbackControls = Ui.column(this);
+        fallbackSection.addView(fallbackControls);
+        brightnessValue = Ui.text(this, "", 13, R.color.muted);
+        brightnessValue.setTag("icon-brightness-value");
+        brightness = new Slider(this);
+        brightness.setTag("icon-brightness");
+        brightness.setContentDescription("未适配图标明度");
+        brightness.setValueTo(200);
+        brightness.setStepSize(1);
+        brightness.setValue(style.brightness);
+        Ui.sliderRow(fallbackControls, "明度", brightness, brightnessValue, 100f);
+        saturationValue = Ui.text(this, "", 13, R.color.muted);
+        saturationValue.setTag("icon-saturation-value");
+        saturation = new Slider(this);
+        saturation.setTag("icon-saturation");
+        saturation.setContentDescription("未适配图标饱和度");
+        saturation.setValueTo(200);
+        saturation.setStepSize(1);
+        saturation.setValue(style.saturation);
+        Ui.sliderRow(fallbackControls, "饱和度", saturation, saturationValue, 100f);
+
+        contrastValue = Ui.text(this, "", 13, R.color.muted);
+        contrastValue.setTag("icon-contrast-value");
+        contrast = new Slider(this);
+        contrast.setTag("icon-contrast");
+        contrast.setContentDescription("未适配图标对比度");
+        contrast.setValueTo(200);
+        contrast.setStepSize(1);
+        contrast.setValue(style.contrast);
+        Ui.sliderRow(fallbackControls, "对比度", contrast, contrastValue, 100f);
+        fallbackValue = Ui.text(this, "", 14, R.color.ink);
+        fallbackScale = new Slider(this);
+        fallbackScale.setTag("icon-fallback-scale");
+        fallbackScale.setContentDescription("未适配图标缩放");
+        fallbackScale.setValueFrom(50);
+        fallbackScale.setValueTo(100);
+        fallbackScale.setStepSize(1);
+        fallbackScale.setTickVisible(false);
+        fallbackScale.setValue(style.fallbackScale);
+        Ui.sliderRow(fallbackControls, "缩放", fallbackScale, fallbackValue, 100f);
+        Ui.space(fallbackControls, 16);
         contrast.addOnChangeListener((slider, value, user) -> changed());
         brightness.addOnChangeListener((slider, value, user) -> changed());
         saturation.addOnChangeListener((slider, value, user) -> changed());
@@ -210,9 +198,6 @@ public final class IconStyleActivity extends ThemedActivity {
 
     private void updateFallbackSection() {
         fallbackSection.setVisibility(pack.isEmpty() ? View.GONE : View.VISIBLE);
-        fallbackControls.setVisibility(fallbackExpanded ? View.VISIBLE : View.GONE);
-        fallbackHeader.setText(fallbackExpanded ? "未适配图标样式    ▾" : "未适配图标样式    ▸");
-        fallbackHeader.setContentDescription("未适配图标样式，" + (fallbackExpanded ? "已展开" : "已折叠"));
     }
 
     private void choosePack() {
@@ -361,7 +346,6 @@ public final class IconStyleActivity extends ThemedActivity {
         out.putInt("original-saturation", original.saturation);
         out.putInt("original-brightness", original.brightness);
         out.putInt("original-contrast", original.contrast);
-        out.putBoolean("fallback-expanded", fallbackExpanded);
         super.onSaveInstanceState(out);
     }
 }
