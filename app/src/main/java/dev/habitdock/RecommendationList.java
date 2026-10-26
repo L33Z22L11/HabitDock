@@ -7,7 +7,7 @@ import java.util.*;
 
 final class RecommendationList extends ListView {
     private final Context context;
-    private final int columns;
+    private int columns = 1;
     private IconStyle iconStyle;
     private String renderedStyle = "";
     private MainStyle mainStyle;
@@ -24,7 +24,6 @@ final class RecommendationList extends ListView {
         context = a;
         iconStyle = IconStyle.load(a);
         mainStyle = MainStyle.load(a);
-        columns = getResources().getConfiguration().fontScale > 1.35f ? 1 : 2;
         setDivider(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         setDividerHeight(Ui.dp(a, 4));
         setSelector(android.R.color.transparent);
@@ -55,7 +54,7 @@ final class RecommendationList extends ListView {
 
             public View getView(int pos, View reused, ViewGroup parent) {
                 LinearLayout row;
-                if (reused instanceof LinearLayout)
+                if (reused instanceof LinearLayout && ((LinearLayout) reused).getChildCount() == columns)
                     row = (LinearLayout) reused;
                 else {
                     row = new LinearLayout(context);
@@ -92,6 +91,20 @@ final class RecommendationList extends ListView {
         if (android.os.Build.VERSION.SDK_INT >= 29)
             normalScrollbar = getVerticalScrollbarThumbDrawable();
         applyScrollbar(mainStyle);
+    }
+
+    @Override
+    protected void onMeasure(int widthSpec, int heightSpec) {
+        int width = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+        int nextColumns = mainStyle.columns(context, width);
+        if (columns != nextColumns) {
+            int firstItem = getFirstVisiblePosition() * columns;
+            int top = getChildCount() == 0 ? getPaddingTop() : getChildAt(0).getTop();
+            columns = nextColumns;
+            adapter.notifyDataSetChanged();
+            setSelectionFromTop(firstItem / columns, top - getPaddingTop());
+        }
+        super.onMeasure(widthSpec, heightSpec);
     }
 
     void applyScrollbar(MainStyle style) {

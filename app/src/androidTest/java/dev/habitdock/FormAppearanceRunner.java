@@ -47,6 +47,15 @@ public final class FormAppearanceRunner extends Instrumentation {
         });
     }
 
+    private int backgroundPixel(android.graphics.drawable.Drawable drawable, int x, int y) {
+        Bitmap bitmap = Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888);
+        drawable.setBounds(0, 0, 108, 108);
+        drawable.draw(new Canvas(bitmap));
+        int color = bitmap.getPixel(x, y);
+        bitmap.recycle();
+        return color;
+    }
+
     @Override
     public void onStart() {
         Bundle result = new Bundle();
@@ -176,8 +185,8 @@ public final class FormAppearanceRunner extends Instrumentation {
                 check(brief.rowDp(editor) == detailed.rowDp(editor), "brief and detailed reasons share row height");
                 AppTile tile = new AppTile(editor);
                 Repository.App example = new Repository.App(editor.getPackageName(), "示例应用");
-                Predictor.Prediction prediction = new Predictor.Prediction(example.pkg, 1, "此时常用");
-                int reasonHeight = -1;
+                Predictor.Prediction prediction = new Predictor.Prediction(example.pkg, 1, "此时常用",
+                        "这个时间经常使用，而且最近几天的打开频率较高");
                 for (MainStyle variant : new MainStyle[]{brief, detailed, brief}) {
                     tile.bind(example, prediction, IconStyle.defaults(), variant, false);
                     tile.measure(View.MeasureSpec.makeMeasureSpec(Ui.dp(editor, 180), View.MeasureSpec.EXACTLY),
@@ -185,11 +194,43 @@ public final class FormAppearanceRunner extends Instrumentation {
                                     View.MeasureSpec.EXACTLY));
                     tile.layout(0, 0, tile.getMeasuredWidth(), tile.getMeasuredHeight());
                     TextView reason = tile.findViewWithTag("app-reason");
-                    check(reasonHeight < 0 || reason.getHeight() == reasonHeight,
-                            "reason area keeps its height when switching detail");
+                    View copy = (View) reason.getParent(), icon = tile.getChildAt(0);
+                    check(Math.abs(copy.getTop() + copy.getBottom() - icon.getTop() - icon.getBottom()) <= 2,
+                            "actual title and reason block centers against the icon");
+                    check(reason.getHeight() <= reason.getLayout().getHeight()
+                            + reason.getPaddingTop() + reason.getPaddingBottom() + 2,
+                            "reason contains no reserved blank line");
                     check(reason.getMaxLines() == (variant.reasons == 2 ? 2 : 1), "brief reason still uses one line");
-                    reasonHeight = reason.getHeight();
                 }
+                RecommendationList responsive = new RecommendationList(editor);
+                java.util.List<Predictor.Prediction> entries = new java.util.ArrayList<>();
+                for (int i = 0; i < 12; i++)
+                    entries.add(prediction);
+                responsive.show(new Repository.Snapshot(java.util.Collections.singletonMap(example.pkg, example),
+                        entries, 0, 0, true));
+                View reused = null;
+                for (int width : new int[]{360, 1024, 320}) {
+                    responsive.measure(View.MeasureSpec.makeMeasureSpec(Ui.dp(editor, width), View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(Ui.dp(editor, 400), View.MeasureSpec.EXACTLY));
+                    int expectedColumns = brief.columns(editor, Ui.dp(editor, width - 16));
+                    reused = responsive.getAdapter().getView(0, reused, responsive);
+                    check(((ViewGroup) reused).getChildCount() == expectedColumns,
+                            "resized list rebuilds recycled rows with current column count");
+                    check(responsive.getAdapter().getCount() == (12 + expectedColumns - 1) / expectedColumns,
+                            "all recommendations survive column changes");
+                    check(width != 1024 || expectedColumns > 2, "tablet expands beyond two columns");
+                }
+                android.graphics.drawable.Drawable launcher = editor.getPackageManager()
+                        .getApplicationIcon(editor.getApplicationInfo());
+                check(launcher instanceof android.graphics.drawable.AdaptiveIconDrawable,
+                        "launcher uses adaptive layers instead of a nested square icon");
+                android.graphics.drawable.AdaptiveIconDrawable adaptive = (android.graphics.drawable.AdaptiveIconDrawable) launcher;
+                check(backgroundPixel(adaptive.getBackground(), 0, 54) >>> 24 == 255,
+                        "launcher background fills mask edges");
+                check(backgroundPixel(adaptive.getForeground(), 0, 54) >>> 24 == 0,
+                        "launcher foreground has no square background");
+                if (Build.VERSION.SDK_INT >= 33)
+                    check(adaptive.getMonochrome() != null, "launcher provides themed monochrome artwork");
                 int[] selected = {-1};
                 SlidingChoice choice = new SlidingChoice(editor, new String[]{"关", "原生", "兼容", "自定义"},
                         "test-choice-", value -> selected[0] = value);

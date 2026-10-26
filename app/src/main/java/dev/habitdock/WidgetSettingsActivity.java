@@ -177,15 +177,14 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         controls.addView(themeControls, new LinearLayout.LayoutParams(-1, -2));
         Ui.space(controls, 16);
         LinearLayout layoutCard = Ui.column(this);
-        if (!MainStyle.load(this).hasBackground())
-            layoutCard.setBackground(Ui.shape(this, R.color.surface, 24));
-        layoutCard.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        layoutCard.setBackground(Ui.card(this, 24));
+        layoutCard.setClipToOutline(true);
         controls.addView(layoutCard, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout expand = new LinearLayout(this);
         expand.setTag("widget-layout-toggle");
         expand.setGravity(Gravity.CENTER_VERTICAL);
-        expand.setPadding(Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8));
-        Ui.nativeTouch(expand);
+        expand.setPadding(Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20));
+        Ui.roundedTouch(expand, 24);
         LinearLayout copy = Ui.column(this);
         copy.addView(Ui.text(this, "排列与入口", 16, R.color.ink));
         capacity = Ui.text(this, "", 12, R.color.muted);
@@ -198,6 +197,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         expand.addView(chevron, new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)));
         layoutCard.addView(expand);
         layoutControls = Ui.column(this);
+        layoutControls.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), Ui.dp(this, 12));
         layoutControls.setVisibility(state != null && state.getBoolean("layout-expanded") ? View.VISIBLE : View.GONE);
         chevron.setRotation(layoutControls.getVisibility() == View.VISIBLE ? 90 : 0);
         expand.setOnClickListener(v -> {

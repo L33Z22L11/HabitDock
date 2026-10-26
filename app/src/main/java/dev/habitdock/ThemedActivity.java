@@ -30,6 +30,7 @@ public abstract class ThemedActivity extends AppCompatActivity {
         if (nativeWindow)
             getTheme().applyStyle(R.style.NativeWallpaperWindow, true);
         super.onCreate(state);
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         // AppCompat may restore the base theme while applying the night configuration.
         Appearance.apply(this);
         if (nativeWindow)

@@ -17,7 +17,7 @@
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="com.novalauncher.THEME" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="com.anddoes.launcher.THEME" /></intent>
     </queries>
-    <application android:name=".HabitApplication" android:label="@string/app_name" android:icon="@drawable/ic_app" android:theme="@style/AppTheme"
+    <application android:name=".HabitApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@style/AppTheme"
         android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.apkfiles" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/apk_share_paths" />

@@ -81,7 +81,7 @@ final class MainStyle {
     }
 
     int extraWallpaperVeil(Context context) {
-        return veil(context, 204);
+        return veil(context, Math.round(255 * .33f));
     }
 
     private int veil(Context context, int alpha) {
@@ -104,6 +104,13 @@ final class MainStyle {
 
     int accent(Context context) {
         return Ui.color(context, R.color.accent);
+    }
+
+    int columns(Context context, int availablePx) {
+        float fontScale = Math.max(1, context.getResources().getConfiguration().fontScale);
+        int minimum = Ui.dp(context, Math.max(160, iconDp + 26 + 100 * fontScale * labelSp / 16f));
+        int gap = Ui.dp(context, 4);
+        return Math.max(1, (availablePx + gap) / (minimum + gap));
     }
 
     int rowDp(Context context) {

@@ -28,8 +28,7 @@ final class WidgetThemeControls extends LinearLayout {
         this.changed = changed;
         setOrientation(VERTICAL);
         setPadding(Ui.dp(activity, 16), Ui.dp(activity, 20), Ui.dp(activity, 16), Ui.dp(activity, 12));
-        if (!MainStyle.load(activity).hasBackground())
-            setBackground(Ui.shape(activity, R.color.surface, 24));
+        setBackground(Ui.card(activity, 24));
         TextView title = Ui.text(activity, "主题", 16, R.color.ink);
         Ui.title(title);
         addView(title);

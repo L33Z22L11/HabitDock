@@ -54,7 +54,8 @@ public final class MainStyleActivity extends ThemedActivity {
         original = saved == null
                 ? style
                 : new MainStyle(saved[0], saved[1], saved[2], saved[3], saved[4] != 0,
-                        saved.length > 5 ? saved[5] : 80, saved.length > 6 ? saved[6] : 0);
+                        saved.length > 5 ? saved[5] : MainStyle.defaults().transparency,
+                        saved.length > 6 ? saved[6] : 0);
         root = Ui.screen(this);
         LinearLayout bar = Ui.toolbar(this, root, "主界面样式", true);
         bar.setBackgroundColor(Ui.pageSurface(this));
@@ -71,7 +72,11 @@ public final class MainStyleActivity extends ThemedActivity {
         scroll.addView(content);
         preview = Ui.column(this);
         preview.setTag("main-style-preview");
-        preview.setPadding(Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16));
+        preview.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft)
+                preview.post(this::renderPreview);
+        });
+        preview.setPadding(Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16));
         content.addView(preview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
         body.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 24));
@@ -432,11 +437,6 @@ public final class MainStyleActivity extends ThemedActivity {
     private void renderPreview() {
         preview.removeAllViews();
         preview.setBackgroundColor(style.hasBackground() ? style.wallpaperVeil(this) : style.page(this));
-        TextView heading = Ui.text(this, "预览", 12, R.color.muted);
-        heading.setTextColor(style.ink(this));
-        heading.setGravity(Gravity.CENTER);
-        preview.addView(heading);
-        Ui.space(preview, 12);
         if (sample == null) {
             preview.setMinimumHeight(Ui.dp(this, 212));
             return;
@@ -445,17 +445,22 @@ public final class MainStyleActivity extends ThemedActivity {
         Set<String> seen = new HashSet<>();
         for (Predictor.Prediction prediction : examples)
             seen.add(prediction.pkg);
+        int available = (preview.getWidth() > 0 ? preview.getWidth() : getResources().getDisplayMetrics().widthPixels)
+                - preview.getPaddingLeft() - preview.getPaddingRight();
+        int columns = style.columns(this, available);
+        int sampleCount = Math.max(4, columns * 2);
         Set<String> hidden = Repository.selection(this, "hidden"), pinned = Repository.selection(this, "pinned");
         for (Repository.App app : sample.apps.values())
-            if (examples.size() < 4 && !hidden.contains(app.pkg) && seen.add(app.pkg))
+            if (examples.size() < sampleCount && !hidden.contains(app.pkg) && seen.add(app.pkg))
                 examples.add(new Predictor.Prediction(app.pkg, 0, "已安装的应用"));
-        int columns = getResources().getConfiguration().fontScale > 1.35f ? 1 : 2;
-        for (int index = 0; index < Math.min(4, examples.size()); index += columns) {
+        for (int index = 0; index < Math.min(sampleCount, examples.size()); index += columns) {
             LinearLayout row = new LinearLayout(this);
             for (int column = 0; column < columns; column++) {
                 int item = index + column;
-                if (item >= examples.size())
-                    break;
+                if (item >= examples.size()) {
+                    row.addView(new View(this), new LinearLayout.LayoutParams(0, -1, 1));
+                    continue;
+                }
                 Predictor.Prediction prediction = examples.get(item);
                 AppTile tile = new AppTile(this);
                 tile.bind(sample.apps.get(prediction.pkg), prediction, IconStyle.load(this), style,

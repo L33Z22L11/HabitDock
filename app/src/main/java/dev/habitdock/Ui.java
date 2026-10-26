@@ -64,6 +64,28 @@ final class Ui {
                 : color(context, R.color.soft);
     }
 
+    static int controlSurface(Context context) {
+        // Derive both layers from the same extracted palette. Subtle Material
+        // container tones lose their separation when made translucent over images.
+        int tone = androidx.core.graphics.ColorUtils.blendARGB(color(context, R.color.page),
+                color(context, R.color.ink), .10f);
+        return androidx.core.graphics.ColorUtils.setAlphaComponent(tone, 84);
+    }
+
+    static GradientDrawable card(Context context, int radius) {
+        GradientDrawable background = shape(context, R.color.surface, radius);
+        if (MainStyle.load(context).hasBackground())
+            background.setColor(controlSurface(context));
+        return background;
+    }
+
+    static void roundedTouch(View view, int radius) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(android.graphics.Color.WHITE);
+        mask.setCornerRadius(dp(view.getContext(), radius));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(selectionColor(view.getContext())), null, mask));
+    }
+
     static GradientDrawable panel(Context context, int radius) {
         GradientDrawable background = shape(context, R.color.surface, radius);
         if (MainStyle.load(context).hasBackground())
@@ -161,7 +183,7 @@ final class Ui {
     static void systemBars(Activity a) {
         boolean light = (a.getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK) != android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        systemBars(a, pageSurface(a), light);
+        systemBars(a, android.graphics.Color.TRANSPARENT, light);
     }
 
     static void systemBars(Activity a, int color, boolean light) {
@@ -171,8 +193,10 @@ final class Ui {
         bars.setAppearanceLightNavigationBars(light);
         a.getWindow().setNavigationBarColor(color);
         a.getWindow().setStatusBarColor(color);
-        if (android.os.Build.VERSION.SDK_INT >= 29)
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
             a.getWindow().setStatusBarContrastEnforced(false);
+            a.getWindow().setNavigationBarContrastEnforced(false);
+        }
     }
 
     static LinearLayout toolbar(Activity a, LinearLayout root, String title, boolean back) {
@@ -215,9 +239,11 @@ final class Ui {
     }
 
     static void insets(View root) {
-        root.setOnApplyWindowInsetsListener((v, i) -> {
-            v.setPadding(i.getSystemWindowInsetLeft(), i.getSystemWindowInsetTop(), i.getSystemWindowInsetRight(),
-                    i.getSystemWindowInsetBottom());
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (v, i) -> {
+            androidx.core.graphics.Insets safe = i.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(safe.left, safe.top, safe.right, safe.bottom);
             return i;
         });
     }
