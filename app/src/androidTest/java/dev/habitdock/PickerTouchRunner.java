@@ -188,6 +188,23 @@ public final class PickerTouchRunner extends Instrumentation {
         Bundle result = new Bundle();
         try {
             Context c = getTargetContext();
+            android.content.res.Configuration normal = new android.content.res.Configuration(
+                    c.getResources().getConfiguration());
+            normal.fontScale = 1f;
+            Context sizing = c.createConfigurationContext(normal);
+            int padding = 2 * Ui.dp(sizing, 8);
+            check(AppPickerView.columnsForWidth(sizing, Ui.dp(sizing, 320), padding) == 1,
+                    "narrow phones keep enough room for each app");
+            check(AppPickerView.columnsForWidth(sizing, Ui.dp(sizing, 360), padding) == 2,
+                    "typical phones show two app columns");
+            check(AppPickerView.columnsForWidth(sizing, Ui.dp(sizing, 600), padding) == 3,
+                    "wider screens gain a third app column");
+            check(AppPickerView.columnsForWidth(sizing, Ui.dp(sizing, 720), padding) == 4,
+                    "tablet widths gain four app columns");
+            normal.fontScale = 1.5f;
+            Context largeText = c.createConfigurationContext(normal);
+            check(AppPickerView.columnsForWidth(largeText, Ui.dp(largeText, 360), 2 * Ui.dp(largeText, 8)) == 1,
+                    "large text retains a wider app cell");
             Repository.prefs(c).edit().clear().commit();
             List<Repository.App> apps = AppCatalog.filter(new ArrayList<>(Repository.apps(c).values()),
                     Collections.emptySet(), "");
@@ -202,6 +219,26 @@ public final class PickerTouchRunner extends Instrumentation {
             String first = apps.get(0).pkg, second = apps.get(1).pkg, last = apps.get(apps.size() - 1).pkg;
             open("hidden");
             awaitTag(first);
+            runOnMainSync(() -> {
+                try {
+                    AppPickerView picker = (AppPickerView) tagged("exclusions-page");
+                    ListView list = (ListView) tagged("picker-list");
+                    java.lang.reflect.Field columnField = AppPickerView.class.getDeclaredField("columns");
+                    columnField.setAccessible(true);
+                    int count = columnField.getInt(picker);
+                    check(list.getWidth() > 0 && count == AppPickerView.columnsForWidth(current, list.getWidth(),
+                            list.getPaddingLeft() + list.getPaddingRight()),
+                            "picker columns follow the measured list width and actual padding");
+                    LinearLayout stale = new LinearLayout(current);
+                    for (int i = 0; i <= count; i++)
+                        stale.addView(new PickerCell(current));
+                    LinearLayout rebound = (LinearLayout) list.getAdapter().getView(0, stale, list);
+                    check(rebound.getChildCount() == count,
+                            "a recycled row from a different width has the current number of cells");
+                } catch (ReflectiveOperationException error) {
+                    throw new AssertionError(error);
+                }
+            });
             tap(second, false);
             final String[] beforeSearch = {null};
             runOnMainSync(() -> beforeSearch[0] = (String) ((android.view.ViewGroup) ((ListView) tagged("picker-list"))
@@ -259,7 +296,7 @@ public final class PickerTouchRunner extends Instrumentation {
             check(Repository.selection(c, "pinned").size() == 5, "more than four pins persist through real taps");
             check(((CheckBox) tagged("check:" + apps.get(4).pkg)).isChecked(), "fifth pin stays checked");
             close();
-            current = startActivitySync(MainActivity.actionIntent(c, apps.get(5).pkg)
+            current = startActivitySync(GlassHomeActivity.actionIntent(c, apps.get(5).pkg)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             tapPopupAction("固定推荐");
             check(Repository.selection(c, "pinned").size() == 6
@@ -269,9 +306,9 @@ public final class PickerTouchRunner extends Instrumentation {
 
             Repository.prefs(c).edit().clear().commit();
             Repository.selectionChanged(c);
-            current = startActivitySync(new Intent(c, MainActivity.class)
+            current = startActivitySync(new Intent(c, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-            tap("open-settings", true);
+            HomeNavigation.select(this, current, 2);
             tap("open-exclusions", true);
             awaitTag("open-search");
             query(last);
@@ -297,8 +334,10 @@ public final class PickerTouchRunner extends Instrumentation {
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             awaitTag("settings-page");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
-            awaitTag("recommend-page");
-            check(tagged("open-settings") != null, "system back follows exclusion to settings to recommendations");
+            SystemClock.sleep(600);
+            waitForIdleSync();
+            check(current instanceof GlassHomeActivity && HomeNavigation.selected(current, 0),
+                    "system back follows exclusion to settings to recommendations");
             String target = Repository.load(c, System.currentTimeMillis(), false).predictions.get(0).pkg;
             awaitTag(target);
             longPress(target);

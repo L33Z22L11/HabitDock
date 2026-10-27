@@ -17,7 +17,8 @@ public abstract class ThemedActivity extends AppCompatActivity {
     private final android.content.SharedPreferences.OnSharedPreferenceChangeListener appearanceChanges = (prefs,
             key) -> {
         if (key == null || key.startsWith("appearance.") || key.startsWith("background.")
-                || key.equals("main.background") || key.equals("main.transparency") || key.equals("main.blur")) {
+                || key.equals("main.background") || key.equals("main.transparency") || key.equals("main.blur")
+                || key.equals("main.liquid")) {
             appearanceHandler.removeCallbacks(refreshAppearance);
             appearanceHandler.post(refreshAppearance);
         }
@@ -84,7 +85,7 @@ public abstract class ThemedActivity extends AppCompatActivity {
     }
 
     private String visualKey() {
-        return Appearance.key(this) + ":" + MainStyle.load(this).background;
+        return Appearance.key(this) + ":" + MainStyle.load(this).background + ":" + MainStyle.liquid(this);
     }
 
     final void prepareReturnPreview() {

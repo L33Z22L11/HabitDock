@@ -257,31 +257,11 @@ public final class AppearanceRunner extends Instrumentation {
             defaultSurfaces();
             runOnMainSync(() -> current.finish());
             new MainStyle(44, 16, MainStyle.WALLPAPER, 1, false).save(c);
-            current = startActivitySync(new Intent(c, MainActivity.class)
+            current = startActivitySync(new Intent(c, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
             SystemClock.sleep(1200);
             runOnMainSync(() -> {
-                try {
-                    java.lang.reflect.Field stamp = MainActivity.class.getDeclaredField("previewTime");
-                    stamp.setAccessible(true);
-                    java.lang.reflect.Method update = MainActivity.class.getDeclaredMethod("updatePreviewActions");
-                    update.setAccessible(true);
-                    for (long value : new long[]{0, 123456789L}) {
-                        stamp.setLong(current, value);
-                        update.invoke(current);
-                        check(((TextView) view("recommend-time")).getCurrentTextColor() == Color.WHITE,
-                                "timestamp stays white after state update");
-                        for (String tag : new String[]{"preview-time", "return-now", "open-settings"})
-                            check(((ImageButton) view(tag)).getImageTintList().getDefaultColor() == Ui.color(current,
-                                    R.color.ink),
-                                    "wallpaper toolbar follows brightness: " + tag);
-                    }
-                    stamp.setLong(current, 0);
-                    update.invoke(current);
-                } catch (ReflectiveOperationException error) {
-                    throw new AssertionError(error);
-                }
                 AppTile tile = new AppTile(current);
                 tile.bind(new Repository.App(c.getPackageName(), "样例"),
                         new Predictor.Prediction(c.getPackageName(), 1, "常用"), IconStyle.defaults(), MainStyle.load(c),

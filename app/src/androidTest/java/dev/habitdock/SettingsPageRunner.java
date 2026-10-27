@@ -27,8 +27,7 @@ public final class SettingsPageRunner extends Instrumentation {
     @Override
     public void callActivityOnResume(Activity resumed) {
         super.callActivityOnResume(resumed);
-        if (resumed instanceof MainActivity || resumed instanceof SettingsActivity
-                || resumed instanceof MainStyleActivity)
+        if (resumed instanceof GlassHomeActivity || resumed instanceof MainStyleActivity)
             activity = resumed;
     }
 
@@ -202,12 +201,13 @@ public final class SettingsPageRunner extends Instrumentation {
             }
             RefreshPolicy.succeeded(context, now, true);
             activity = startActivitySync(
-                    new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    new Intent(context, GlassHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
             Repository.WORK.submit(() -> {
             }).get();
-            click("open-settings");
-            check(activity instanceof SettingsActivity, "settings has its own Activity for system predictive back");
+            HomeNavigation.select(this, activity, 2);
+            check(activity instanceof GlassHomeActivity && HomeNavigation.selected(activity, 2),
+                    "settings is the third home destination");
             check(view("recommendation-limit").getContentDescription().toString().contains("20 个"),
                     "settings shows default twenty");
             click("recommendation-limit");
@@ -223,13 +223,13 @@ public final class SettingsPageRunner extends Instrumentation {
             }).get();
             check(RecommendationLimit.load(context) == 2 && RefreshPolicy.last(context) == now,
                     "valid limit saves immediately without changing refresh clock");
-            click("screen-back");
+            HomeNavigation.select(this, activity, 0);
             Repository.WORK.submit(() -> {
             }).get();
             waitForIdleSync();
             check(Repository.current(context, false).data.predictions.size() == 2,
                     "recommendation page uses the changed limit on return");
-            click("open-settings");
+            HomeNavigation.select(this, activity, 2);
             click("recommendation-limit");
             number("40");
             choose("取消");
@@ -242,14 +242,14 @@ public final class SettingsPageRunner extends Instrumentation {
             screenshot("duration-picker");
             choose("确定");
             check(RefreshPolicy.minutes(context) == 90, "hour and minute duration saves ninety minutes");
-            check(!((ThemedActivity) activity).getOnBackPressedDispatcher().hasEnabledCallbacks(),
-                    "settings return leaves the system predictive Activity transition unhandled");
+            check(((ThemedActivity) activity).getOnBackPressedDispatcher().hasEnabledCallbacks(),
+                    "home handles back from the settings tab");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             SystemClock.sleep(600);
             waitForIdleSync();
-            check(!(activity instanceof SettingsActivity) && view("recommend-page").isShown(),
-                    "system back returns to the existing recommendation Activity");
-            click("open-settings");
+            check(activity instanceof GlassHomeActivity && HomeNavigation.selected(activity, 0),
+                    "system back returns to recommendations in the same home");
+            HomeNavigation.select(this, activity, 2);
 
             web = new ActivityMonitor() {
                 @Override
@@ -308,12 +308,13 @@ public final class SettingsPageRunner extends Instrumentation {
             check(opened.getDataString().equals(AppUpdates.RELEASES), "failed check can still open release history");
             check(view("check-updates").isEnabled(), "checking remains available after failure");
             check(RefreshPolicy.last(context) == now, "settings and update actions preserve recommendation time");
-            ActivityMonitor recreated = addMonitor(SettingsActivity.class.getName(), null, false);
+            ActivityMonitor recreated = addMonitor(GlassHomeActivity.class.getName(), null, false);
             runOnMainSync(activity::recreate);
             activity = waitForMonitorWithTimeout(recreated, 5000);
             removeMonitor(recreated);
-            check(activity != null, "settings activity recreates");
+            check(activity != null, "home activity recreates");
             waitForIdleSync();
+            check(HomeNavigation.selected(activity, 2), "settings tab survives home recreation");
             Repository.WORK.submit(() -> {
             }).get();
             waitForIdleSync();

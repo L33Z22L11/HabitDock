@@ -232,19 +232,18 @@ public final class WidgetAppearanceRunner extends Instrumentation {
             });
             check(RefreshPolicy.last(context) == stamp, "appearance work does not refresh the recommendation clock");
             runOnMainSync(() -> current.finish());
-            current = startActivitySync(new Intent(context, MainActivity.class)
+            current = startActivitySync(new Intent(context, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
             Activity main = current;
-            click("open-settings");
-            check(current instanceof SettingsActivity
-                    && !((ThemedActivity) current).getOnBackPressedDispatcher().hasEnabledCallbacks(),
-                    "settings uses the platform activity return rather than a custom callback");
+            HomeNavigation.select(this, main, 2);
+            check(current == main && HomeNavigation.selected(main, 2),
+                    "settings opens inside the existing home");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             SystemClock.sleep(800);
             waitForIdleSync();
-            check(current == main && !main.isFinishing(),
-                    "platform back returns to the existing main Activity");
+            check(current == main && !main.isFinishing() && HomeNavigation.selected(main, 0),
+                    "back returns to recommendations in the existing home");
             result.putString("stream", "\nPASS: " + checks + " widget appearance/rendering/navigation checks\n");
         } catch (Throwable error) {
             status = Activity.RESULT_CANCELED;

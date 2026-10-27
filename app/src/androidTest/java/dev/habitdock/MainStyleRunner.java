@@ -26,6 +26,10 @@ public final class MainStyleRunner extends Instrumentation {
     }
 
     private View view(String tag) {
+        if ("display-reasons".equals(tag)) {
+            View label = view("display-reasons-1");
+            return (View) label.getParent().getParent();
+        }
         View value = current.getWindow().getDecorView().findViewWithTag(tag);
         if (value == null && android.os.Build.VERSION.SDK_INT >= 29)
             for (View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
@@ -81,6 +85,15 @@ public final class MainStyleRunner extends Instrumentation {
         SystemClock.sleep(200);
     }
 
+    private void backgroundMode(int index) {
+        ActivityMonitor monitor = addMonitor(MainStyleActivity.class.getName(), null, false);
+        runOnMainSync(() -> view("background-mode-" + index).performClick());
+        current = waitForMonitorWithTimeout(monitor, 8000);
+        removeMonitor(monitor);
+        check(current != null, "background selection recreates the editor");
+        waitForIdleSync();
+    }
+
     @Override
     public void onStart() {
         Bundle result = new Bundle();
@@ -94,13 +107,14 @@ public final class MainStyleRunner extends Instrumentation {
             WidgetPreferences widget = WidgetPreferences.load(context,
                     android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID);
             WidgetTheme theme = WidgetTheme.load(context, android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID);
-            current = startActivitySync(new Intent(context, MainStyleActivity.class)
+            current = startActivitySync(new Intent(context, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
             SystemClock.sleep(1500);
-            screenshot("main-style-default");
+            HomeNavigation.openDisplay(this, current);
+            screenshot("main-display-default");
             runOnMainSync(() -> {
-                ViewGroup control = (ViewGroup) view("main-reasons");
+                ViewGroup control = (ViewGroup) view("display-reasons");
                 View thumb = control.getChildAt(0);
                 check(thumb.getWidth() > 0 && thumb.getHeight() > 0, "segmented thumb has size on its first frame");
                 Bitmap painted = Bitmap.createBitmap(control.getWidth(), control.getHeight(), Bitmap.Config.ARGB_8888);
@@ -114,32 +128,37 @@ public final class MainStyleRunner extends Instrumentation {
                 check(selectedColor != containerColor && painted.getPixel(sampleX, sampleY) == selectedColor,
                         "selected segment paints a visible theme-token thumb before interaction");
                 painted.recycle();
-                check(((Slider) view("main-icon-size")).getValue() == 44, "larger default icons");
-                check(((Slider) view("main-label-size")).getValue() == 16, "larger default labels");
-                ((Slider) view("main-icon-size")).setValue(60);
-                ((Slider) view("main-label-size")).setValue(20);
-                view("background-mode-1").performClick();
-                view("main-show-hidden").performClick();
-                view("main-transparency-action").performClick();
+                check(((Slider) HomeNavigation.described(current, "图标大小")).getValue() == 44, "larger default icons");
+                check(((Slider) HomeNavigation.described(current, "应用名大小")).getValue() == 16, "larger default labels");
+                ((Slider) HomeNavigation.described(current, "图标大小")).setValue(60);
+                ((Slider) HomeNavigation.described(current, "应用名大小")).setValue(20);
+                view("display-show-hidden").performClick();
             });
             waitForIdleSync();
-            runOnMainSync(() -> {
-                ((Slider) view("main-transparency")).setValue(65);
-            });
+            dragChoice("display-reasons", 1, 2, false);
+            check(MainStyle.load(context).reasons == 2 && view("display-reasons-2").isSelected(),
+                    "dragging reasons selects and saves detailed mode");
+            dragChoice("display-reasons", 2, 0, true);
+            check(MainStyle.load(context).reasons == 2 && view("display-reasons-2").isSelected(),
+                    "cancelled reason drag preserves the selected mode");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitForIdleSync();
-            dragChoice("main-reasons", 1, 2, false);
-            check(MainStyle.load(context).reasons == 2 && view("main-reason-2").isSelected(),
-                    "dragging reasons selects and saves detailed mode");
-            dragChoice("main-reasons", 2, 0, true);
-            check(MainStyle.load(context).reasons == 2 && view("main-reason-2").isSelected(),
-                    "cancelled reason drag preserves the selected mode");
-            runOnMainSync(() -> view("background-mode-0").performClick());
+            runOnMainSync(() -> current.finish());
+            current = startActivitySync(new Intent(context, MainStyleActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitForIdleSync();
+            backgroundMode(1);
+            runOnMainSync(() -> view("main-transparency-action").performClick());
+            waitForIdleSync();
+            runOnMainSync(() -> ((Slider) view("main-transparency")).setValue(65));
+            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            waitForIdleSync();
+            backgroundMode(0);
             check(MainStyle.load(context).background == MainStyle.APP,
                     "wallpaper off inherits the app appearance");
             check(new MainStyle(44, 16, 1, 1, false).background == MainStyle.APP,
                     "legacy wallpaper palette migrates to app appearance");
-            runOnMainSync(() -> view("background-mode-1").performClick());
+            backgroundMode(1);
             screenshot("main-style-segmented");
             MainStyle edited = MainStyle.load(context);
             check(edited.iconDp == 60 && edited.labelSp == 20 && edited.background == 2 && edited.showHidden,
@@ -210,31 +229,26 @@ public final class MainStyleRunner extends Instrumentation {
                 current.finish();
             });
             current = startActivitySync(
-                    new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    new Intent(context, GlassHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
             screenshot("main-personalization-default");
-            Activity home = current;
+            runOnMainSync(() -> current.finish());
+            current = startActivitySync(new Intent(context, MainStyleActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitForIdleSync();
             for (int mode : new int[]{2, 0, 2}) {
-                ActivityMonitor editorMonitor = addMonitor(MainStyleActivity.class.getName(), null, false);
-                runOnMainSync(() -> home.startActivity(new Intent(home, MainStyleActivity.class)));
-                current = waitForMonitorWithTimeout(editorMonitor, 8000);
-                removeMonitor(editorMonitor);
-                check(current != null, "style editor opens above existing home");
-                waitForIdleSync();
-                runOnMainSync(() -> view("background-mode-" + (mode == 2 ? 1 : 0)).performClick());
-                sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
-                SystemClock.sleep(500);
-                waitForIdleSync();
-                current = home;
-                runOnMainSync(() -> {
-                    int color = ((android.graphics.drawable.ColorDrawable) view("main-toolbar").getBackground())
-                            .getColor();
-                    check(android.graphics.Color.alpha(color) == (mode == 2 ? 18 : 255),
-                            "toolbar follows wallpaper mode without restarting");
-                    check(!home.isFinishing(), "same home survives live background changes");
-                });
+                backgroundMode(mode == 2 ? 1 : 0);
+                check(MainStyle.load(context).background == mode,
+                        "background selection persists in the style editor");
             }
-            check(MainStyle.defaults().rowDp(context) == 74, "reason rows reserve stable two-line spacing");
+            runOnMainSync(() -> current.finish());
+            current = startActivitySync(new Intent(context, GlassHomeActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitForIdleSync();
+            Activity home = current;
+            check(HomeNavigation.selected(home, 0) && !home.isFinishing(),
+                    "home opens on recommendations with the selected appearance");
+            check(MainStyle.defaults().rowDp(context) == 68, "reason rows reserve stable two-line spacing");
             runOnMainSync(() -> {
                 AppTile bare = new AppTile(home);
                 bare.bind(new Repository.App("visible", "Visible"), new Predictor.Prediction("visible", 1, "常用"),

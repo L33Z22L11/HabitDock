@@ -135,27 +135,26 @@ public final class WallpaperBackRunner extends Instrumentation {
             Context context = getTargetContext();
             Repository.prefs(context).edit().clear().commit();
             MainStyle.defaults().save(context);
-            current = startActivitySync(new Intent(context, MainActivity.class)
+            current = startActivitySync(new Intent(context, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
             SystemClock.sleep(500);
             Activity home = current;
-            tap("open-settings");
+            HomeNavigation.select(this, home, 2);
             Activity settings = current;
-            check(settings instanceof SettingsActivity && !wallpaper(settings) && !wallpaper(home),
-                    "ordinary pages without wallpaper keep ordinary windows");
-            check(!((ThemedActivity) settings).getOnBackPressedDispatcher().hasEnabledCallbacks(),
-                    "ordinary settings retains system predictive back");
+            check(settings == home && !wallpaper(home), "settings shares the ordinary home window");
+            check(((ThemedActivity) settings).getOnBackPressedDispatcher().hasEnabledCallbacks(),
+                    "home handles back from the settings tab");
             screenshot("back-native-before");
             startGesture();
             screenshot("back-native-mid");
             endGesture(false);
-            check(current == settings, "actual native edge cancel keeps settings");
+            check(current == settings && HomeNavigation.selected(home, 2), "edge cancellation keeps the settings tab");
             screenshot("back-native-canceled");
             startGesture();
             endGesture(true);
-            check(current == home, "actual native edge commit returns to original home");
-            tap("open-settings");
+            check(current == home && HomeNavigation.selected(home, 0), "edge commit returns to recommendations");
+            HomeNavigation.select(this, home, 2);
             Activity pickerParent = current;
             for (String destination : new String[]{"open-exclusions", "open-pinned"}) {
                 tap(destination);
@@ -175,21 +174,17 @@ public final class WallpaperBackRunner extends Instrumentation {
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             SystemClock.sleep(1500);
             waitForIdleSync();
-            check(current == home, "settings still returns to the original home");
-            runOnMainSync(() -> new MainStyle(44, 16, MainStyle.WALLPAPER, 1, false).save(context));
-            tap("open-settings");
-            settings = current;
-            check(((ThemedActivity) settings).wallpaperBack.callback.isEnabled(),
-                    "wallpaper destination uses scene back only on that edge");
-            check(wallpaper(settings), "settings retains its prepared wallpaper surface after entry");
-            startGesture();
-            WallpaperBack.Scene scene = (WallpaperBack.Scene) view("wallpaper-back-scene");
-            check(scene != null && scene.progress > .15f,
-                    "actual edge gesture drives visible scene progress: " + (scene == null ? -1 : scene.progress));
-            screenshot("back-to-wallpaper-mid");
-            endGesture(false);
-            check(current == settings && view("wallpaper-back-scene") == null && wallpaper(settings),
-                    "scene cancel restores content without dropping the wallpaper surface");
+            check(current == home && HomeNavigation.selected(home, 0),
+                    "settings back returns to recommendations in the same home");
+            runOnMainSync(home::finish);
+            new MainStyle(44, 16, MainStyle.WALLPAPER, 1, false).save(context);
+            current = startActivitySync(new Intent(context, GlassHomeActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            waitForIdleSync();
+            home = current;
+            HomeNavigation.select(this, home, 2);
+            settings = home;
+            check(wallpaper(settings), "settings tab retains the home wallpaper surface");
             tap("open-main-style");
             Activity editor = current;
             Map<String, ?> prefs = new HashMap<>(Repository.prefs(context).getAll());
@@ -212,8 +207,8 @@ public final class WallpaperBackRunner extends Instrumentation {
                     "destroyed committing window retains its final scene without exposing the old page");
             startGesture();
             endGesture(true);
-            check(current == home && preservedCommits >= 2 && !exposedOldFrame,
-                    "wallpaper settings-to-home commit retains the final frame through destruction");
+            check(current == home && HomeNavigation.selected(home, 0),
+                    "wallpaper settings back selects recommendations in the same home");
             check(wallpaper(home), "returning home preserves its wallpaper window");
             Activity nativeHome = home;
             runOnMainSync(() -> {

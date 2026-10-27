@@ -2,4 +2,6 @@
     <item name="settings_list" type="id" />
     <item name="wallpaper_cutout_listener" type="id" />
     <item name="wallpaper_stage_key" type="id" />
+    <item name="glass_panel_material" type="id" />
+    <item name="icon_load_request" type="id" />
 </resources>

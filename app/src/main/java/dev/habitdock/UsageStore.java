@@ -63,7 +63,7 @@ final class UsageStore extends SQLiteOpenHelper {
         long cursor = value(db, "hidden_learning", 0) == 1 ? value(db, "cursor", floor) : floor;
         long from = Math.max(floor, Math.min(now, cursor) - 300_000);
         UsageStatsManager manager = context.getSystemService(UsageStatsManager.class);
-        Set<String> eligible = Repository.eligible(context, Repository.apps(context).keySet());
+        Set<String> eligible = Repository.apps(context).keySet();
         if (eligible.isEmpty())
             return;
         UsageEvents events = manager.queryEvents(from, now);

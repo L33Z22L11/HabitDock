@@ -1,6 +1,7 @@
 package dev.habitdock;
 
 import android.app.*;
+import android.content.Context;
 import android.os.Bundle;
 import android.text.*;
 import android.view.*;
@@ -24,7 +25,19 @@ final class AppPickerView extends LinearLayout {
     };
     private final BaseAdapter adapter;
     private boolean loaded;
-    private final int columns;
+    private int columns = 1;
+
+    static int columnsForWidth(Context context, int width, int horizontalPadding) {
+        int gap = Ui.dp(context, 4);
+        float minimum = 170 * Math.max(1f, context.getResources().getConfiguration().fontScale)
+                * context.getResources().getDisplayMetrics().density;
+        int available = Math.max(0, width - horizontalPadding);
+        // Rows share fractional pixels; rounding each cell separately can lose a
+        // column.
+        // Allow one pixel for separately rounded width and left/right padding.
+        return Math.max(1, (int) ((available + gap + 1f) / (minimum + gap)));
+    }
+
     AppPickerView(Activity host, String selectionMode, Bundle state) {
         super(host);
         activity = host;
@@ -34,23 +47,38 @@ final class AppPickerView extends LinearLayout {
         selected.addAll(Repository.selection(activity, mode));
         java.util.ArrayList<String> savedOrder = state == null ? null : state.getStringArrayList("order-selected");
         orderSelected.addAll(savedOrder == null ? selected : savedOrder);
-        columns = getResources().getConfiguration().fontScale > 1.35f ? 1 : 2;
         LinearLayout root = this;
         search = new EditText(activity);
         search.setTag("search");
         search.setTextColor(Ui.color(activity, R.color.ink));
         search.setHintTextColor(Ui.color(activity, R.color.muted));
         search.setHint(R.string.search_apps);
-        search.setTextSize(14);
+        search.setTextSize(16);
         search.setSingleLine(true);
         search.setBackground(null);
-        search.setPadding(0, 0, 0, 0);
+        search.setPadding(Ui.dp(activity, 20), 0, 0, 0);
         search.setImeOptions(EditorInfo.IME_ACTION_DONE);
         search.setInputType(
                 android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         FrameLayout content = new FrameLayout(activity);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-        ListView list = new ListView(activity);
+        ListView list = new ListView(activity) {
+            @Override
+            protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+                super.onSizeChanged(width, height, oldWidth, oldHeight);
+                int next = columnsForWidth(activity, width, getPaddingLeft() + getPaddingRight());
+                if (next == columns)
+                    return;
+                int firstApp = getFirstVisiblePosition() * columns;
+                View firstRow = getChildAt(0);
+                int top = firstRow == null ? 0 : firstRow.getTop() - getPaddingTop();
+                columns = next;
+                if (adapter != null) {
+                    adapter.notifyDataSetChanged();
+                    setSelectionFromTop(firstApp / columns, top);
+                }
+            }
+        };
         list.setTag("picker-list");
         list.setDivider(null);
         list.setItemsCanFocus(true);
@@ -81,7 +109,7 @@ final class AppPickerView extends LinearLayout {
 
             public View getView(int position, View reused, ViewGroup parent) {
                 LinearLayout row;
-                if (reused instanceof LinearLayout)
+                if (reused instanceof LinearLayout && ((LinearLayout) reused).getChildCount() == columns)
                     row = (LinearLayout) reused;
                 else {
                     row = new LinearLayout(activity);

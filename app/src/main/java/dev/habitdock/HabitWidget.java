@@ -106,7 +106,7 @@ public class HabitWidget extends AppWidgetProvider {
     }
 
     static PendingIntent openApp(Context c) {
-        return PendingIntent.getActivity(c, 0, MainActivity.appIntent(c),
+        return PendingIntent.getActivity(c, 0, GlassHomeActivity.appIntent(c),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
@@ -266,7 +266,7 @@ public class HabitWidget extends AppWidgetProvider {
             // bitmap margins, not fixed dp inferred from sometimes-inaccurate options.
             cell.setImageViewBitmap(R.id.app_icon, icon);
             if (layout.actions)
-                launch = MainActivity.actionIntent(c, p.pkg, widgetId);
+                launch = GlassHomeActivity.actionIntent(c, p.pkg, widgetId);
             cell.setContentDescription(R.id.app_cell,
                     data.apps.get(p.pkg).label + "，" + p.reason + (layout.actions ? "，点按显示操作菜单" : ""));
             cell.setOnClickPendingIntent(R.id.app_cell, PendingIntent.getActivity(c, 100, launch,
@@ -294,7 +294,7 @@ public class HabitWidget extends AppWidgetProvider {
             theme.applyForeground(c, more, R.id.more_time, "setTextColor");
             more.setContentDescription(R.id.app_cell, "更多推荐应用");
             more.setOnClickPendingIntent(R.id.app_cell,
-                    PendingIntent.getActivity(c, 0, MainActivity.widgetIntent(c, widgetId),
+                    PendingIntent.getActivity(c, 0, GlassHomeActivity.widgetIntent(c, widgetId),
                             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
             more.setContentDescription(R.id.more_time, "上次推荐更新于 " + stamp);
             float moreSize = Math.min(28, iconSize * .5f);

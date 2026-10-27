@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <queries>
+        <package android:name="com.absinthe.libchecker" />
+        <package android:name="com.android.settings" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
         <intent><action android:name="org.adw.launcher.THEMES" /></intent>
@@ -22,18 +24,19 @@
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.apkfiles" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/apk_share_paths" />
         </provider>
-        <activity android:name=".MainActivity" android:theme="@style/MainLaunchTheme" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:windowSoftInputMode="adjustResize" android:exported="true" android:launchMode="singleTask">
+        <activity android:name=".GlassHomeActivity" android:theme="@style/MainLaunchTheme" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:windowSoftInputMode="adjustResize" android:exported="true" android:launchMode="singleTask" />
+        <activity-alias android:name=".MainActivity" android:targetActivity=".GlassHomeActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
-        </activity>
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </activity-alias>
         <activity android:name=".WidgetSettingsActivity" android:exported="true" android:theme="@style/WidgetWallpaperTheme">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
         </activity>
         <activity android:name=".AppPickerActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".MainStyleActivity" android:exported="false" android:theme="@style/WidgetWallpaperTheme" />
         <activity android:name=".IconStyleActivity" android:exported="false" android:theme="@style/WidgetWallpaperTheme" />
-        <activity android:name=".SettingsActivity" android:theme="@style/WallpaperSurfaceTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <!-- Existing widget PendingIntents from older versions also open the shared screen. -->
-        <activity-alias android:name=".MoreActivity" android:targetActivity=".MainActivity" android:exported="false" />
+        <activity-alias android:name=".MoreActivity" android:targetActivity=".GlassHomeActivity" android:exported="false" />
         <receiver android:name=".HabitWidget" android:exported="false" android:label="@string/widget_name">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/habit_widget" />

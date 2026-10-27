@@ -14,6 +14,12 @@ final class AppTile extends LinearLayout {
     private final ImageView icon, pin, hiddenBadge;
     private final FrameLayout iconFrame;
     private final TextView label, detail;
+    private boolean grid;
+
+    void grid(boolean value) {
+        grid = value;
+    }
+
     AppTile(Context context) {
         super(context);
         setOrientation(HORIZONTAL);
@@ -51,6 +57,7 @@ final class AppTile extends LinearLayout {
         copy.addView(detail);
         addView(copy, new LayoutParams(0, -2, 1));
         setFocusable(true);
+        Ui.pressScale(this);
     }
 
     void bind(Repository.App app, String subtitle, IconStyle style) {
@@ -60,6 +67,13 @@ final class AppTile extends LinearLayout {
 
     void bind(Repository.App app, Predictor.Prediction prediction, IconStyle style, MainStyle main, boolean pinned) {
         Context context = getContext();
+        setOrientation(grid ? VERTICAL : HORIZONTAL);
+        setGravity(grid ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+        LinearLayout copy = (LinearLayout) getChildAt(1);
+        copy.setPadding(grid ? 0 : Ui.dp(context, 10), grid ? Ui.dp(context, 6) : 0, 0, 0);
+        copy.setLayoutParams(grid ? new LayoutParams(-1, -2) : new LayoutParams(0, -2, 1));
+        label.setGravity(grid ? Gravity.CENTER : Gravity.START);
+        detail.setGravity(grid ? Gravity.CENTER : Gravity.START);
         iconFrame.setLayoutParams(new LayoutParams(Ui.dp(context, main.iconDp), Ui.dp(context, main.iconDp)));
         label.setText(app.label);
         label.setTextSize(main.labelSp);
@@ -85,11 +99,6 @@ final class AppTile extends LinearLayout {
                 .valueOf(ColorUtils.calculateLuminance(main.accent(context)) > .45 ? Color.BLACK : Color.WHITE));
         hiddenBadge.setBackground(badge.getConstantState().newDrawable().mutate());
         hiddenBadge.setImageTintList(pin.getImageTintList());
-        GradientDrawable mask = new GradientDrawable();
-        mask.setColor(Color.WHITE);
-        mask.setCornerRadius(Ui.dp(context, 12));
-        setBackground(new RippleDrawable(
-                ColorStateList.valueOf(ColorUtils.setAlphaComponent(main.ink(context), 35)), null, mask));
         label.setShadowLayer(0, 0, 0, Color.TRANSPARENT);
         detail.setShadowLayer(0, 0, 0, Color.TRANSPARENT);
         setContentDescription(

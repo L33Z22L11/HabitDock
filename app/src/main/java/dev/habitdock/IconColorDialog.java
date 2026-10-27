@@ -173,7 +173,7 @@ final class IconColorDialog {
             public void afterTextChanged(Editable e) {
             }
         });
-        AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+        AlertDialog dialog = new GlassDialogBuilder(activity)
                 .setTitle(title).setView(scroll)
                 .setNegativeButton("取消", (d, w) -> result.accept(selected))
                 .setPositiveButton("完成", null).create();

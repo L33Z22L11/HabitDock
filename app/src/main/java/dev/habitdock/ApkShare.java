@@ -72,7 +72,7 @@ final class ApkShare {
                         }
                     };
                     if (split)
-                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                        new GlassDialogBuilder(activity)
                                 .setTitle("分享完整分包安装包")
                                 .setMessage("这个应用由多个 APK 组成，已打包成 ZIP。接收方需要支持分包的安装器；不包含账号或应用数据。")
                                 .setNegativeButton("取消", null).setPositiveButton("分享", (d, w) -> launch.run()).show();

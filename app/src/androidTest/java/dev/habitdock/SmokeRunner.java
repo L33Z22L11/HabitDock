@@ -116,7 +116,7 @@ public final class SmokeRunner extends Instrumentation {
                 check(store.read(now).size() == 14, "persisted history readable");
                 Repository.prefs(c).edit().putStringSet("hidden", Set.of(secret)).putStringSet("pinned", Set.of(secret))
                         .commit();
-                store.retainInstalled(Repository.eligible(c, Repository.apps(c).keySet()));
+                store.retainInstalled(Repository.apps(c).keySet());
                 check(store.read(now).stream().filter(e -> e.pkg.equals(secret)).count() == 7,
                         "hiding preserves existing learning history");
                 check(Repository.load(c, now, false).ranked.stream().anyMatch(p -> p.pkg.equals(secret)),
@@ -520,7 +520,7 @@ public final class SmokeRunner extends Instrumentation {
                 java.nio.file.Files.write(copy.toPath(), new byte[]{5});
                 if (!copy.setLastModified(cleanupNow - 2 * day))
                     throw new AssertionError("cannot age launch-cleanup fixture");
-                Activity main = startActivitySync(new Intent(c, MainActivity.class)
+                Activity main = startActivitySync(new Intent(c, GlassHomeActivity.class)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 waitForIdleSync();
                 Repository.WORK.submit(() -> {

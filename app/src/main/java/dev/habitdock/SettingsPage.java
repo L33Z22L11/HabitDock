@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @android.annotation.SuppressLint("ViewConstructor")
 final class SettingsPage extends ScrollView {
     private final Activity activity;
+    private final Runnable chooseHome;
     private final LinearLayout items;
     private static final AtomicBoolean UPDATE_IN_FLIGHT = new AtomicBoolean();
     private Repository.Snapshot lastData;
@@ -23,9 +24,17 @@ final class SettingsPage extends ScrollView {
     private boolean checkingUpdate, loadingStats;
     private TextView learningDescription;
     private LinearLayout aboutRow;
+    private LinearLayout defaultHomeRow;
+    private TextView defaultHomeTitle;
+    private boolean defaultHome;
     private String updateStatus;
     SettingsPage(Activity activity) {
+        this(activity, null);
+    }
+
+    SettingsPage(Activity activity, Runnable chooseHome) {
         super(activity);
+        this.chooseHome = chooseHome;
         this.activity = activity;
         setTag("settings-page");
         setId(R.id.settings_list);
@@ -37,6 +46,8 @@ final class SettingsPage extends ScrollView {
         if (data != null)
             lastData = data;
         items.removeAllViews();
+        defaultHomeRow = null;
+        defaultHomeTitle = null;
         section("推荐机制");
         row(R.drawable.ic_block, "排除应用", "已排除 " + Repository.selection(activity, "hidden").size() + " 个",
                 () -> activity.startActivity(new Intent(activity, AppPickerActivity.class).putExtra("mode", "hidden")))
@@ -44,7 +55,7 @@ final class SettingsPage extends ScrollView {
         row(R.drawable.ic_pin, "置顶应用", "已置顶 " + Repository.selection(activity, "pinned").size() + " 个",
                 () -> activity.startActivity(new Intent(activity, AppPickerActivity.class).putExtra("mode", "pinned")))
                 .setTag("open-pinned");
-        row(R.drawable.ic_list, "推荐数量", RecommendationLimit.load(activity) + " 个（置顶另计）",
+        row(R.drawable.ic_count, "推荐数量", RecommendationLimit.load(activity) + " 个（置顶另计）",
                 this::chooseRecommendationLimit).setTag("recommendation-limit");
         row(R.drawable.ic_refresh, "更新频率", intervalLabel(RefreshPolicy.minutes(activity)),
                 this::chooseRefreshInterval).setTag("refresh-interval");
@@ -52,9 +63,14 @@ final class SettingsPage extends ScrollView {
         row(R.drawable.ic_shapes, "图标样式", "",
                 () -> activity.startActivity(new Intent(activity, IconStyleActivity.class))).setTag("open-icon-style");
         widgetStyleRow();
-        row(R.drawable.ic_list, "主界面样式", "",
+        row(R.drawable.ic_layout, "主界面样式", "",
                 () -> activity.startActivity(new Intent(activity, MainStyleActivity.class))).setTag("open-main-style");
         section("权限与数据");
+        if (chooseHome != null) {
+            defaultHomeRow = row(R.drawable.ic_home, homeTitle(), "", chooseHome);
+            defaultHomeRow.setTag("default-home");
+            defaultHomeTitle = (TextView) ((LinearLayout) defaultHomeRow.getChildAt(1)).getChildAt(0);
+        }
         row(R.drawable.ic_clock, "使用情况访问", UsageStore.permitted(activity) ? "已开启" : "未开启", () -> permission(activity));
         row(R.drawable.ic_delete, "重新学习", "清除使用记录", this::reset);
         section("关于");
@@ -99,9 +115,23 @@ final class SettingsPage extends ScrollView {
         loadLearningStats();
     }
 
+    void setDefaultHome(boolean value) {
+        defaultHome = value;
+        if (defaultHomeTitle != null) {
+            defaultHomeTitle.setText(homeTitle());
+            defaultHomeRow.setContentDescription(homeTitle());
+        }
+    }
+
+    private String homeTitle() {
+        return defaultHome ? "切换默认桌面" : "设为默认桌面";
+    }
+
     private void section(String label) {
         TextView heading = Ui.text(activity, label, 12, R.color.accent);
-        heading.setPadding(Ui.dp(activity, 16), Ui.dp(activity, 20), Ui.dp(activity, 16), Ui.dp(activity, 4));
+        // An embedded floating header already supplies the first section's top gap.
+        int top = chooseHome != null && items.getChildCount() == 0 ? 0 : 20;
+        heading.setPadding(Ui.dp(activity, 16), Ui.dp(activity, top), Ui.dp(activity, 16), Ui.dp(activity, 4));
         items.addView(heading);
     }
 
@@ -187,11 +217,7 @@ final class SettingsPage extends ScrollView {
                 + "\n\n根据时段、星期和近期使用频率推荐应用。最多保存 60 天本地记录，推荐完全在本机完成。"
                 + "\n\n仅手动检查更新时连接 GitHub，不上传应用列表或使用记录。"
                 + "\n\n组件按设置间隔更新，系统省电策略可能延迟；打开推荐页或点击更多时，到期才补刷。", 16, R.color.ink));
-        ScrollView scroll = new ScrollView(activity);
-        scroll.addView(content);
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle(R.string.app_name)
-                .setView(scroll)
-                .setPositiveButton("关闭", null).show();
+        GlassFormDialog.info(activity, activity.getString(R.string.app_name), content, "关闭");
     }
 
     private void chooseRecommendationLimit() {
@@ -230,13 +256,12 @@ final class SettingsPage extends ScrollView {
         content.addView(slider, new LinearLayout.LayoutParams(-1, Ui.dp(activity, 48)));
         slider.addOnChangeListener((view, count, user) -> update.run());
         update.run();
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle("推荐数量").setView(content)
-                .setNegativeButton("取消", null).setPositiveButton("确定", (dialog, which) -> {
-                    int count = (int) slider.getValue();
-                    if (count != RecommendationLimit.load(activity))
-                        RecommendationLimit.save(activity, count);
-                    refresh(null);
-                }).show();
+        GlassFormDialog.show(activity, "推荐数量", content, () -> {
+            int count = (int) slider.getValue();
+            if (count != RecommendationLimit.load(activity))
+                RecommendationLimit.save(activity, count);
+            refresh(null);
+        });
     }
 
     private void checkForUpdates() {
@@ -286,15 +311,15 @@ final class SettingsPage extends ScrollView {
         } else
             updateStatus = installed + " · 检查失败";
         refresh(null);
-        if (!isShown() || !activity.hasWindowFocus() || activity.isFinishing())
+        if (!isShown() || !activity.hasWindowFocus() || activity.isFinishing() || GlassFormDialog.isShowing(activity))
             return;
         if (error != null) {
-            new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle("检查更新失败")
+            new GlassDialogBuilder(activity).setTitle("检查更新失败")
                     .setMessage(error)
                     .setNegativeButton("关闭", null)
                     .setPositiveButton("版本页面", (dialog, which) -> openWeb(AppUpdates.RELEASES)).show();
         } else if (newer) {
-            new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle("发现新版本 " + release.tag)
+            new GlassDialogBuilder(activity).setTitle("发现新版本 " + release.tag)
                     .setMessage("当前版本 " + installed + "\n\n前往 GitHub Release 页面查看更新说明与下载 APK。")
                     .setNegativeButton("稍后", null)
                     .setPositiveButton("前往下载", (dialog, which) -> openWeb(release.url())).show();
@@ -348,24 +373,23 @@ final class SettingsPage extends ScrollView {
         content.addView(Ui.text(activity, "小时", 14, R.color.ink));
         content.addView(minutes, new LinearLayout.LayoutParams(Ui.dp(activity, 80), Ui.dp(activity, 168)));
         content.addView(Ui.text(activity, "分钟", 14, R.color.ink));
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle("更新频率")
-                .setView(content).setNegativeButton("取消", null).setPositiveButton("确定", (dialog, which) -> {
-                    hours.clearFocus();
-                    minutes.clearFocus();
-                    int interval = Math.max(15, Math.min(1440, hours.getValue() * 60 + minutes.getValue()));
-                    if (interval != RefreshPolicy.minutes(activity)) {
-                        Repository.prefs(activity).edit().putInt("refresh_minutes", interval).apply();
-                        Context app = activity.getApplicationContext();
-                        RefreshJob.schedule(app);
-                        Repository.WORK.execute(() -> {
-                            try {
-                                HabitWidget.refreshIfDue(app);
-                            } catch (RuntimeException ignored) {
-                            }
-                        });
+        GlassFormDialog.show(activity, "更新频率", content, () -> {
+            hours.clearFocus();
+            minutes.clearFocus();
+            int interval = Math.max(15, Math.min(1440, hours.getValue() * 60 + minutes.getValue()));
+            if (interval != RefreshPolicy.minutes(activity)) {
+                Repository.prefs(activity).edit().putInt("refresh_minutes", interval).apply();
+                Context app = activity.getApplicationContext();
+                RefreshJob.schedule(app);
+                Repository.WORK.execute(() -> {
+                    try {
+                        HabitWidget.refreshIfDue(app);
+                    } catch (RuntimeException ignored) {
                     }
-                    refresh(null);
-                }).show();
+                });
+            }
+            refresh(null);
+        });
     }
 
     private LinearLayout row(int drawable, String title, String detail, Runnable action) {
@@ -411,7 +435,7 @@ final class SettingsPage extends ScrollView {
     }
 
     private void reset() {
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle("重新学习你的习惯？")
+        new GlassDialogBuilder(activity).setTitle("重新学习你的习惯？")
                 .setMessage("删除已有本机记录，从现在重新开始，不再导入更早的系统历史。固定和排除设置保留。")
                 .setNegativeButton("取消", null).setPositiveButton("重新学习", (d, w) -> {
                     Context app = activity.getApplicationContext();

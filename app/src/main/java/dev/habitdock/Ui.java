@@ -12,6 +12,7 @@ import android.widget.*;
 final class Ui {
     static final int FORM_ROW_HEIGHT = 56;
     static final int SEGMENT_HEIGHT = 40;
+    static final int FORM_TEXT_SP = 16;
     static int color(Context c, int resource) {
         int attr = resource == R.color.accent
                 ? com.google.android.material.R.attr.colorPrimary
@@ -37,6 +38,20 @@ final class Ui {
     static void sliderRow(LinearLayout body, String title,
             com.google.android.material.slider.Slider slider, TextView value, float resetValue) {
         sliderRow(body, title, slider, value, () -> resetValue);
+    }
+
+    static com.google.android.material.materialswitch.MaterialSwitch switchRow(LinearLayout body, String title,
+            String tag) {
+        com.google.android.material.materialswitch.MaterialSwitch control = new com.google.android.material.materialswitch.MaterialSwitch(
+                body.getContext());
+        control.setTag(tag);
+        control.setContentDescription(title);
+        FormRow row = new FormRow(body.getContext(), title);
+        row.control(control, 48, false, null);
+        row.setOnClickListener(view -> control.toggle());
+        row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        body.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        return control;
     }
 
     static void sliderRow(LinearLayout body, String title,
@@ -105,6 +120,25 @@ final class Ui {
         slider.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
     }
 
+    static LinearLayout permissionBanner(android.app.Activity activity) {
+        LinearLayout banner = new LinearLayout(activity);
+        banner.setGravity(Gravity.CENTER_VERTICAL);
+        banner.setPadding(dp(activity, 16), 0, dp(activity, 16), 0);
+        banner.setBackground(new RippleDrawable(ColorStateList.valueOf(selectionColor(activity)),
+                new android.graphics.drawable.ColorDrawable(controlSurface(activity)),
+                new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
+        banner.addView(text(activity, "开启使用情况访问，开始学习", 14, R.color.accent),
+                new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView arrow = new ImageView(activity);
+        arrow.setImageResource(R.drawable.ic_chevron);
+        arrow.setImageTintList(ColorStateList.valueOf(color(activity, R.color.accent)));
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        banner.addView(arrow, new LinearLayout.LayoutParams(dp(activity, 24), dp(activity, 24)));
+        banner.setOnClickListener(v -> SettingsPage.permission(activity));
+        banner.setVisibility(View.GONE);
+        return banner;
+    }
+
     static Button textButton(Context c) {
         return new com.google.android.material.button.MaterialButton(c, null,
                 com.google.android.material.R.attr.borderlessButtonStyle);
@@ -152,6 +186,24 @@ final class Ui {
         v.setBackgroundResource(value.resourceId);
         v.setStateListAnimator(null);
         v.setElevation(0);
+    }
+
+    static void pressScale(View view) {
+        view.setOnTouchListener((target, event) -> {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP
+                    || action == MotionEvent.ACTION_CANCEL) {
+                boolean pressed = action == MotionEvent.ACTION_DOWN;
+                target.animate().cancel();
+                target.animate().scaleX(pressed ? .96f : 1f).scaleY(pressed ? .96f : 1f)
+                        .setDuration(pressed ? 90 : 260)
+                        .setInterpolator(pressed
+                                ? new android.view.animation.DecelerateInterpolator()
+                                : new android.view.animation.OvershootInterpolator(1.2f))
+                        .start();
+            }
+            return false;
+        });
     }
 
     static ImageButton icon(Context c, int drawable, String description, View.OnClickListener click) {
@@ -232,6 +284,11 @@ final class Ui {
 
     static void title(TextView v) {
         v.setTypeface(null, Typeface.BOLD);
+    }
+
+    static void headerTitle(TextView text) {
+        text.setTextSize(20);
+        text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
     }
 
     static void space(LinearLayout parent, int dp) {

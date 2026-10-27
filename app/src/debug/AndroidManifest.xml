@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Keep the existing Debug launcher component and HOME selection. -->
+        <activity android:name=".GlassHomeActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </activity>
+        <activity-alias android:name=".MainActivity" android:targetActivity=".GlassHomeActivity" android:exported="true">
+            <intent-filter tools:node="removeAll" />
+        </activity-alias>
+    </application>
+</manifest>

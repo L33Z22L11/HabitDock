@@ -94,10 +94,10 @@ public final class WallpaperWindowRunner extends Instrumentation {
             Context c = getTargetContext();
             Repository.prefs(c).edit().clear().commit();
             new MainStyle(44, 16, MainStyle.WALLPAPER, 1, false, 80, 60).save(c);
-            current = startActivitySync(new Intent(c, MainActivity.class)
+            current = startActivitySync(new Intent(c, GlassHomeActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
-            open(SettingsActivity.class);
+            HomeNavigation.select(this, current, 2);
             Activity settings = current;
             runOnMainSync(() -> settings.getWindow().getDecorView().findViewWithTag("refresh-interval").performClick());
             waitForIdleSync();

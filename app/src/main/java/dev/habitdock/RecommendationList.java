@@ -8,6 +8,42 @@ import java.util.*;
 final class RecommendationList extends ListView {
     private final Context context;
     private int columns = 1;
+    private boolean grid;
+    private int scrollbarTop;
+
+    void scrollbarTop(int top) {
+        scrollbarTop = Math.max(0, top);
+        invalidate();
+    }
+
+    @Override
+    public void onDrawForeground(android.graphics.Canvas canvas) {
+        if (scrollbarTop <= 0 || scrollbarTop >= getHeight()) {
+            super.onDrawForeground(canvas);
+            return;
+        }
+        int save = canvas.save();
+        canvas.translate(0, scrollbarTop);
+        canvas.scale(1, (getHeight() - scrollbarTop) / (float) getHeight());
+        super.onDrawForeground(canvas);
+        canvas.restoreToCount(save);
+    }
+
+    void grid(boolean value) {
+        if (grid == value)
+            return;
+        grid = value;
+        adapter.notifyDataSetChanged();
+        requestLayout();
+    }
+
+    private int rowHeight() {
+        if (!grid)
+            return mainStyle.rowDp(context);
+        float scale = Math.max(1, getResources().getConfiguration().fontScale);
+        return Math.round(mainStyle.iconDp + 24 + (mainStyle.labelSp * 1.3f
+                + (mainStyle.reasons == 0 ? 0 : 34)) * scale);
+    }
     private IconStyle iconStyle;
     private String renderedStyle = "";
     private MainStyle mainStyle;
@@ -66,7 +102,7 @@ final class RecommendationList extends ListView {
                     }
                 }
                 row.setLayoutParams(new AbsListView.LayoutParams(-1,
-                        Ui.dp(context, mainStyle.rowDp(context))));
+                        Ui.dp(context, rowHeight())));
                 for (int i = 0; i < columns; i++) {
                     AppTile tile = (AppTile) row.getChildAt(i);
                     int index = pos * columns + i;
@@ -77,6 +113,7 @@ final class RecommendationList extends ListView {
                     tile.setVisibility(View.VISIBLE);
                     Predictor.Prediction p = predictions.get(index);
                     Repository.App app = apps.get(p.pkg);
+                    tile.grid(grid);
                     tile.bind(app, p, iconStyle, mainStyle, pins.contains(p.pkg));
                     tile.setOnClickListener(v -> Ui.launch(context, p.pkg));
                     tile.setOnLongClickListener(v -> {
@@ -96,7 +133,10 @@ final class RecommendationList extends ListView {
     @Override
     protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
-        int nextColumns = mainStyle.columns(context, width);
+        int nextColumns = grid
+                ? Math.max(1, (width + Ui.dp(context, 4)) / Ui.dp(context,
+                        Math.max(78, mainStyle.iconDp + 20) * Math.max(1, getResources().getConfiguration().fontScale)))
+                : mainStyle.columns(context, width);
         if (columns != nextColumns) {
             int firstItem = getFirstVisiblePosition() * columns;
             int top = getChildCount() == 0 ? getPaddingTop() : getChildAt(0).getTop();

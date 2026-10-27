@@ -215,26 +215,11 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         rows = slider(body, "应用行数", "widget-rows", 1, 5, rowValue);
         scale = slider(body, "图标大小", "widget-scale", 50, 100, scaleLabel);
         Ui.space(body, 12);
-        more = new com.google.android.material.materialswitch.MaterialSwitch(this);
-        more.setTag("widget-more");
-        more.setText("显示更多入口");
-        more.setTextSize(14);
-        more.setTextColor(Ui.color(this, R.color.ink));
-        body.addView(more, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        more = Ui.switchRow(body, "显示更多入口", "widget-more");
         Ui.space(body, 12);
-        moreTime = new com.google.android.material.materialswitch.MaterialSwitch(this);
-        moreTime.setTag("widget-more-time");
-        moreTime.setText("显示更新时间");
-        moreTime.setTextSize(14);
-        moreTime.setTextColor(Ui.color(this, R.color.ink));
-        body.addView(moreTime, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        moreTime = Ui.switchRow(body, "显示更新时间", "widget-more-time");
         Ui.space(body, 12);
-        actions = new com.google.android.material.materialswitch.MaterialSwitch(this);
-        actions.setTag("widget-actions");
-        actions.setText("点按图标显示操作菜单");
-        actions.setTextSize(14);
-        actions.setTextColor(Ui.color(this, R.color.ink));
-        body.addView(actions, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        actions = Ui.switchRow(body, "点按图标显示操作菜单", "widget-actions");
         Ui.space(body, 12);
         more.setOnCheckedChangeListener((v, checked) -> changed());
         moreTime.setOnCheckedChangeListener((v, checked) -> changed());
@@ -380,7 +365,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
     private void hideSelected() {
         if (selectedId <= 0)
             return;
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("隐藏此组件？")
+        new GlassDialogBuilder(this).setTitle("隐藏此组件？")
                 .setMessage("从布局列表和推荐分配中隐藏，可在未完成添加或已隐藏中恢复。不会删除宿主中的绑定。")
                 .setNegativeButton("取消", null).setPositiveButton("隐藏", (d, which) -> {
                     WidgetInstances.setHidden(this, selectedId, true);
@@ -429,7 +414,7 @@ public final class WidgetSettingsActivity extends ThemedActivity {
         input.selectAll();
         content.addView(input, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
         content.addView(Ui.text(this, "用于设置中区分各个组件。桌面自带的下方标题由桌面管理。", 12, R.color.muted));
-        AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("组件名称")
+        AlertDialog dialog = new GlassDialogBuilder(this).setTitle("组件名称")
                 .setView(content)
                 .setNeutralButton(WidgetInstances.active(this, id) ? "隐藏组件" : "启用组件", (d, which) -> {
                     if (WidgetInstances.active(this, id))
@@ -476,9 +461,8 @@ public final class WidgetSettingsActivity extends ThemedActivity {
             Ui.toast(this, "暂时无法添加组件，请重试");
             return;
         }
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("请从桌面添加")
-                .setMessage("长按桌面空白处，在小组件列表选择知时。")
-                .setPositiveButton("知道了", null).show();
+        GlassFormDialog.message(this, "请从桌面添加", "长按桌面空白处，在小组件列表选择知时。",
+                null, "知道了", null);
     }
 
     private void bind(WidgetPreferences p) {

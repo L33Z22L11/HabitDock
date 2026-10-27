@@ -36,6 +36,14 @@ final class MainStyle {
         return new MainStyle(44, 16, APP, 1, false);
     }
 
+    static boolean liquid(Context context) {
+        return Repository.prefs(context).getBoolean("main.liquid", true);
+    }
+
+    static int startTab(Context context) {
+        return Repository.prefs(context).getInt("main.start_tab", 0) == 2 ? 2 : 0;
+    }
+
     static MainStyle load(Context context) {
         SharedPreferences prefs = Repository.prefs(context);
         MainStyle defaults = defaults();

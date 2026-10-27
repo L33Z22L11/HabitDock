@@ -19,6 +19,12 @@ final class SlidingChoice extends FrameLayout {
     private final IntConsumer changed;
     private final int inset, slop;
     private int selected;
+    private int minimumSegmentDp = 64;
+
+    void minimumSegmentWidth(int dp) {
+        minimumSegmentDp = Math.max(0, dp);
+        requestLayout();
+    }
     private FormRow form;
     private float downX, downY;
     private boolean dragging;
@@ -26,7 +32,7 @@ final class SlidingChoice extends FrameLayout {
     SlidingChoice(Context context, String[] choices, String tagPrefix, IntConsumer changed) {
         super(context);
         this.changed = changed;
-        inset = Ui.dp(context, 4);
+        inset = Ui.dp(context, 3);
         slop = ViewConfiguration.get(context).getScaledTouchSlop();
         boolean dark = (getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -43,7 +49,7 @@ final class SlidingChoice extends FrameLayout {
         setBackground(shape(container, 14));
         setPadding(inset, inset, inset, inset);
         thumb = new View(context);
-        thumb.setBackground(shape(selection, 10));
+        thumb.setBackground(shape(selection, 11));
         thumb.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         addView(thumb, new LayoutParams(0, -1));
         LinearLayout row = new LinearLayout(context);
@@ -51,10 +57,10 @@ final class SlidingChoice extends FrameLayout {
         labels = new TextView[choices.length];
         for (int i = 0; i < choices.length; i++) {
             int index = i;
-            TextView label = Ui.text(context, choices[i], 13, R.color.muted);
+            TextView label = Ui.text(context, choices[i], Ui.FORM_TEXT_SP, R.color.muted);
             label.setTag(tagPrefix + i);
             label.setGravity(Gravity.CENTER);
-            label.setPadding(Ui.dp(context, 3), 0, Ui.dp(context, 3), 0);
+            label.setPadding(Ui.dp(context, 2), 0, Ui.dp(context, 2), 0);
             label.setFocusable(true);
             label.setOnClickListener(v -> commit(index));
             label.setAccessibilityDelegate(new View.AccessibilityDelegate() {
@@ -131,7 +137,9 @@ final class SlidingChoice extends FrameLayout {
         float widest = 0;
         for (TextView label : labels)
             widest = Math.max(widest, label.getPaint().measureText(label.getText().toString()));
-        int desired = Math.round((widest + Ui.dp(getContext(), 16)) * labels.length + inset * 2);
+        int desired = Math
+                .round(Math.max(Ui.dp(getContext(), minimumSegmentDp), widest + Ui.dp(getContext(), 12)) * labels.length
+                        + inset * 2);
         if (MeasureSpec.getMode(widthSpec) != MeasureSpec.EXACTLY)
             widthSpec = MeasureSpec.makeMeasureSpec(resolveSize(desired, widthSpec), MeasureSpec.EXACTLY);
         super.onMeasure(widthSpec, heightSpec);

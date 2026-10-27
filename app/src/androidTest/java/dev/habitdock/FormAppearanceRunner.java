@@ -77,7 +77,7 @@ public final class FormAppearanceRunner extends Instrumentation {
                 check((veil | 0xff000000) == (wallpaper.page(themed) | 0xff000000),
                         "veil uses the themed surface instead of pure black or white");
             }
-            for (Class<?> type : new Class<?>[]{MainActivity.class, SettingsActivity.class, AppPickerActivity.class,
+            for (Class<?> type : new Class<?>[]{AppPickerActivity.class,
                     MainStyleActivity.class, IconStyleActivity.class, WidgetSettingsActivity.class}) {
                 ThemedActivity screen = (ThemedActivity) open(type);
                 for (int transparency : new int[]{0, 65, 100}) {
@@ -91,10 +91,9 @@ public final class FormAppearanceRunner extends Instrumentation {
                         View root = host.getChildAt(0);
                         Bitmap bitmap = Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
                         root.getBackground().draw(new Canvas(bitmap));
-                        int expected = screen instanceof MainActivity
-                                ? value.wallpaperVeil(screen)
-                                : androidx.core.graphics.ColorUtils.compositeColors(value.extraWallpaperVeil(screen),
-                                        value.wallpaperVeil(screen));
+                        int expected = androidx.core.graphics.ColorUtils.compositeColors(
+                                value.extraWallpaperVeil(screen),
+                                value.wallpaperVeil(screen));
                         int actual = bitmap.getPixel(bitmap.getWidth() / 2,
                                 bitmap.getHeight() - root.getPaddingBottom() - Ui.dp(screen, 10));
                         check(Color.alpha(actual) == Color.alpha(expected),
@@ -130,9 +129,24 @@ public final class FormAppearanceRunner extends Instrumentation {
             Activity widgets = open(WidgetSettingsActivity.class);
             verifyReset(widgets, "widget-scale", 60, 82);
             verifyReset(widgets, "widget-transparency", 80, 60);
+            Activity home = open(GlassHomeActivity.class);
+            HomeNavigation.openDisplay(this, home);
+            runOnMainSync(() -> {
+                for (String label : new String[]{"图标大小", "应用名大小"}) {
+                    Slider slider = (Slider) HomeNavigation.described(home, label);
+                    float expected = "图标大小".equals(label) ? 44 : 16;
+                    slider.setValue("图标大小".equals(label) ? 64 : 20);
+                    FormRow row = (FormRow) slider.getParent();
+                    View reset = row.findViewWithTag("null-reset");
+                    check(reset != null && reset.getVisibility() == View.VISIBLE, label + " exposes reset");
+                    reset.performClick();
+                    check(slider.getValue() == expected && reset.getVisibility() == View.INVISIBLE,
+                            label + " restores its display default");
+                }
+            });
+            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            waitForIdleSync();
             MainStyleActivity editor = (MainStyleActivity) open(MainStyleActivity.class);
-            verifyReset(editor, "main-icon-size", 64, 44);
-            verifyReset(editor, "main-label-size", 20, 16);
             runOnMainSync(() -> {
                 editor.findViewById(android.R.id.content).findViewWithTag("main-blur-action").performClick();
             });

@@ -83,20 +83,21 @@ public final class IconStyleActivity extends ThemedActivity {
         hero.addView(secondPreview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
         body.setBackgroundColor(Ui.pageSurface(this));
-        body.setPadding(Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 24));
+        body.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 24));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         LinearLayout packRow = new LinearLayout(this);
         packRow.setGravity(Gravity.CENTER_VERTICAL);
         packRow.setTag("icon-pack");
         packRow.setMinimumHeight(Ui.dp(this, 52));
         Ui.nativeTouch(packRow);
-        packRow.addView(Ui.text(this, "图标包", 14, R.color.ink), new LinearLayout.LayoutParams(0, -2, 1));
+        packRow.addView(Ui.text(this, "图标包", Ui.FORM_TEXT_SP, R.color.ink),
+                new LinearLayout.LayoutParams(0, -2, 1));
         packIcon = new ImageView(this);
         LinearLayout selectedPack = new LinearLayout(this);
         selectedPack.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         selectedPack.addView(packIcon, new LinearLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 28)));
-        packValue = Ui.text(this, "", 14, R.color.muted);
-        packValue.setPadding(Ui.dp(this, 8), 0, 0, 0);
+        packValue = Ui.text(this, "", Ui.FORM_TEXT_SP, R.color.muted);
+        packValue.setPadding(Ui.dp(this, 6), 0, 0, 0);
         packValue.setMaxLines(2);
         packValue.setEllipsize(android.text.TextUtils.TruncateAt.END);
         selectedPack.addView(packValue, new LinearLayout.LayoutParams(-2, -2));
@@ -201,7 +202,7 @@ public final class IconStyleActivity extends ThemedActivity {
     }
 
     private void choosePack() {
-        AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("图标包")
+        AlertDialog dialog = new GlassDialogBuilder(this).setTitle("图标包")
                 .setMessage("正在读取已安装图标包…").setNegativeButton("取消", null).show();
         Repository.WORK.execute(() -> {
             java.util.List<IconPacks.Pack> packs = IconPacks.installed(getApplicationContext());
@@ -252,7 +253,7 @@ public final class IconStyleActivity extends ThemedActivity {
                         return row;
                     }
                 };
-                AlertDialog.Builder picker = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                AlertDialog.Builder picker = new GlassDialogBuilder(this)
                         .setTitle("图标包")
                         .setAdapter(adapter, (d, which) -> {
                             binding = true;

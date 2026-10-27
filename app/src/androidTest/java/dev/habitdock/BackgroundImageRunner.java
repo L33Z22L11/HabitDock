@@ -112,7 +112,7 @@ public final class BackgroundImageRunner extends Instrumentation {
             check(widgetColor != android.graphics.Color.TRANSPARENT, "widget resolves cached wallpaper palette");
             style.save(c);
             check(MainStyle.load(c).sameAs(style) && BackgroundImages.exists(c), "image mode and blur survive reload");
-            current = startActivitySync(new Intent(c, MainActivity.class)
+            current = startActivitySync(new Intent(c, AppPickerActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             waitForIdleSync();
             SystemClock.sleep(500);
@@ -127,13 +127,12 @@ public final class BackgroundImageRunner extends Instrumentation {
                 WallpaperStage.refresh(current);
                 Bitmap returned = background(current);
                 check(first.sameAs(returned),
-                        "returning main background uses configured transparency instead of a theme veil");
+                        "returning background uses configured transparency instead of a theme veil");
                 first.recycle();
                 second.recycle();
                 returned.recycle();
             });
-            for (Class<?> type : new Class<?>[]{SettingsActivity.class, AppPickerActivity.class,
-                    MainStyleActivity.class}) {
+            for (Class<?> type : new Class<?>[]{AppPickerActivity.class, MainStyleActivity.class}) {
                 open(type);
                 ThemedActivity screen = (ThemedActivity) current;
                 check(!screen.wallpaperScene(),
@@ -142,7 +141,7 @@ public final class BackgroundImageRunner extends Instrumentation {
                         "image page has no wallpaper window flag: " + type.getSimpleName());
                 check(screen.getWindow().getAttributes().format == PixelFormat.OPAQUE, "image window is opaque");
                 check(!screen.wallpaperBack.callback.isEnabled(), "image page leaves predictive back to the platform");
-                if (screen instanceof SettingsActivity || screen instanceof AppPickerActivity)
+                if (screen instanceof AppPickerActivity)
                     runOnMainSync(() -> {
                         Bitmap pixels = background(screen);
                         ViewGroup frame = screen.findViewById(android.R.id.content);
@@ -188,7 +187,7 @@ public final class BackgroundImageRunner extends Instrumentation {
                 });
             }
             for (int mode : new int[]{MainStyle.IMAGE, MainStyle.CUSTOM_IMAGE}) {
-                for (Class<?> type : new Class<?>[]{MainActivity.class, SettingsActivity.class}) {
+                for (Class<?> type : new Class<?>[]{AppPickerActivity.class}) {
                     new MainStyle(44, 16, mode, 1, false, 100, 60).save(c);
                     open(type);
                     runOnMainSync(() -> {

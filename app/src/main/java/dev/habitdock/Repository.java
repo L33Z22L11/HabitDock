@@ -75,11 +75,6 @@ final class Repository {
         return new HashSet<>(prefs(c).getStringSet(key, Collections.emptySet()));
     }
 
-    static Set<String> eligible(Context c, Set<String> installed) {
-        // Hidden apps continue to learn; visibility is applied after ranking.
-        return new HashSet<>(installed);
-    }
-
     static void setExcluded(Context c, String pkg, boolean excluded) {
         synchronized (PRIVACY_LOCK) {
             Set<String> hidden = selection(c, "hidden"), pins = selection(c, "pinned");
@@ -102,7 +97,7 @@ final class Repository {
         WORK.execute(() -> {
             try {
                 try (UsageStore store = new UsageStore(c)) {
-                    store.retainInstalled(eligible(c, apps(c).keySet()));
+                    store.retainInstalled(apps(c).keySet());
                     store.sync(System.currentTimeMillis());
                 }
                 HabitWidget.update(c, false);
@@ -147,11 +142,12 @@ final class Repository {
                     db.sync(now);
                 history = db.read(now);
             }
-        Set<String> eligible = eligible(c, apps.keySet());
+        // Hidden apps continue to learn; visibility is applied after ranking.
+        Set<String> eligible = apps.keySet();
         List<Predictor.Prediction> predictions = new ArrayList<>();
         Set<String> pinned = selection(c, "pinned");
         for (String pkg : apps.keySet())
-            if (pinned.contains(pkg) && eligible.contains(pkg))
+            if (pinned.contains(pkg))
                 predictions.add(new Predictor.Prediction(pkg, 1, "已固定"));
         for (Predictor.Prediction p : Predictor.rank(history, now, target, ZoneId.systemDefault(), eligible))
             if (!pinned.contains(p.pkg))

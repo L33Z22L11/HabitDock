@@ -40,6 +40,8 @@ git push origin v0.5.0
 
 流程：格式／测试／Lint → 签名 release 构建 → APK 签名与版本校验 → 创建草稿 Release → 上传 APK 和 `SHA256SUMS` → 发布。GitHub 自动附带对应提交的源码归档。
 
+发布前还会把 APK 的签名证书 SHA-256 指纹与 `config/release-certificate.sha256` 比较；该公开指纹来自已发布的 0.5.2。密钥不匹配时流水线会停止，避免发布无法覆盖安装的版本。此文件不包含私钥或密码。
+
 上传失败时保留草稿，可重跑继续上传；已经发布的 Release 不会被流水线覆盖，请创建新版本 Tag。只有发布任务申请 `contents: write`；分支和 PR 检查没有写权限或签名 Secrets。
 
 ## 本地验证发布构建

@@ -18,6 +18,7 @@ public final class AppPickerActivity extends ThemedActivity {
         picker.setTag(mode.equals("hidden") ? "exclusions-page" : "pinned-page");
         root.addView(picker, new LinearLayout.LayoutParams(-1, 0, 1));
         android.widget.TextView title = (android.widget.TextView) bar.getChildAt(1);
+        Ui.headerTitle(title);
         picker.setCountListener(count -> title
                 .setText(getString(R.string.picker_title, mode.equals("hidden") ? "排除应用" : "置顶应用", count)));
         androidx.activity.OnBackPressedCallback searchBack = new androidx.activity.OnBackPressedCallback(false) {

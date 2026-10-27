@@ -10,7 +10,7 @@ import java.util.function.BooleanSupplier;
  */
 @android.annotation.SuppressLint("ViewConstructor")
 final class FormRow extends LinearLayout {
-    private static final int LABEL_WIDTH = 70, RESET_WIDTH = 48, VALUE_WIDTH = 36, GAP = 4;
+    private static final int HEADING_MIN_WIDTH = 144, RESET_WIDTH = 48, VALUE_WIDTH = 36, GAP = 4;
     private final LinearLayout heading;
     private final TextView label;
     private ImageButton reset;
@@ -25,7 +25,7 @@ final class FormRow extends LinearLayout {
         setMinimumHeight(Ui.dp(context, Ui.FORM_ROW_HEIGHT));
         heading = new LinearLayout(context);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        label = Ui.text(context, title, 14, R.color.ink);
+        label = Ui.text(context, title, Ui.FORM_TEXT_SP, R.color.ink);
         heading.addView(label, new LayoutParams(-2, -2));
         addView(heading);
     }
@@ -47,9 +47,8 @@ final class FormRow extends LinearLayout {
         modified = changed;
         reset = Ui.icon(getContext(), R.drawable.ic_refresh, "重置" + label.getText(), v -> action.run());
         reset.setTag(tag + "-reset");
-        // Bring the icon closer to the label while retaining its full touch target.
+        // The full touch target begins immediately after the label.
         LayoutParams resetSlot = new LayoutParams(Ui.dp(getContext(), RESET_WIDTH), Ui.dp(getContext(), 48));
-        resetSlot.setMarginStart(-Ui.dp(getContext(), GAP));
         reset.setLayoutParams(resetSlot);
         int padding = Ui.dp(getContext(), 16);
         reset.setPadding(padding, padding, padding, padding);
@@ -67,11 +66,15 @@ final class FormRow extends LinearLayout {
     protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
         refreshReset();
-        int labelWidth = Math.max(
-                Math.round(Ui.dp(getContext(), LABEL_WIDTH) * getResources().getConfiguration().fontScale),
-                (int) Math.ceil(label.getPaint().measureText(label.getText().toString())));
+        int labelWidth = (int) Math.ceil(label.getPaint().measureText(label.getText().toString()));
         label.getLayoutParams().width = labelWidth;
-        int headingWidth = labelWidth + (reset == null ? 0 : Ui.dp(getContext(), RESET_WIDTH - GAP));
+        int resetWidth = reset == null ? 0 : Ui.dp(getContext(), RESET_WIDTH);
+        // One shared minimum for the complete label + reset group; spare width goes
+        // after the button.
+        int headingWidth = Math.max(
+                Math.round(Ui.dp(getContext(), HEADING_MIN_WIDTH)
+                        * Math.max(1f, getResources().getConfiguration().fontScale)),
+                labelWidth + resetWidth);
         control.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
                 MeasureSpec.makeMeasureSpec(control.getLayoutParams().height, MeasureSpec.EXACTLY));
         int valueWidth = value == null

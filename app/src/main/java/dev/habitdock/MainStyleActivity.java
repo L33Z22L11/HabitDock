@@ -16,23 +16,23 @@ public final class MainStyleActivity extends ThemedActivity {
     }
 
     private MainStyle original, style;
+    private boolean originalLiquid;
+    private int originalStartTab;
     private int originalSeed, originalColorMode, originalScheme;
     private Button restore;
-    private SlidingChoice reasons, backgroundMode;
+    private SlidingChoice backgroundMode, startPage;
     private String originalWallpaperImage, originalCustomImage;
     private Button imageAction, transparencyAction, blurAction;
-    private PopupWindow adjustment;
+    private AnchoredGlassPopup adjustment;
     private Slider activeAdjustment;
     private TextView imageStatus;
     private LinearLayout root;
     private boolean importing;
     private static final int PICK_IMAGE = 41, WALLPAPER_ACCESS = 42;
 
-    private Slider icons, labels;
     private LinearLayout transparencyControls;
     private TextView blurStatus;
-    private TextView iconValue, labelValue;
-    private MaterialSwitch hidden;
+    private MaterialSwitch liquid;
     private LinearLayout preview;
     private Repository.Snapshot sample;
     private boolean binding;
@@ -41,6 +41,8 @@ public final class MainStyleActivity extends ThemedActivity {
     public void onCreate(Bundle state) {
         super.onCreate(state);
         style = MainStyle.load(this);
+        originalLiquid = state == null ? MainStyle.liquid(this) : state.getBoolean("original-liquid", true);
+        originalStartTab = state == null ? MainStyle.startTab(this) : state.getInt("original-start-tab", 0);
         originalColorMode = state == null ? Appearance.colorMode(this) : state.getInt("original-color-mode");
         originalScheme = state == null ? Appearance.scheme(this) : state.getInt("original-scheme", 1);
         originalSeed = state == null ? Appearance.seed(this) : state.getInt("original-seed");
@@ -61,8 +63,8 @@ public final class MainStyleActivity extends ThemedActivity {
         bar.setBackgroundColor(Ui.pageSurface(this));
         restore = StyleRestore.button(this, () -> StyleRestore.show(this, "重置主界面样式",
                 () -> restoreStyle(original, originalColorMode, originalScheme, originalSeed, originalWallpaperImage,
-                        originalCustomImage),
-                () -> restoreStyle(MainStyle.defaults(), 0, 1, 0xff246e5c, "", "")));
+                        originalCustomImage, originalLiquid, originalStartTab),
+                () -> restoreStyle(MainStyle.defaults(), 0, 1, 0xff246e5c, "", "", true, 0)));
         restore.setTag("main-style-reset");
         bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
@@ -83,6 +85,22 @@ public final class MainStyleActivity extends ThemedActivity {
         body.setBackgroundColor(Ui.pageSurface(this));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         body.addView(new AppearanceControls(this), new LinearLayout.LayoutParams(-1, -2));
+        startPage = new SlidingChoice(this, new String[]{"推荐", "设置"}, "main-start-page-", selected -> {
+            if (binding)
+                return;
+            Repository.prefs(this).edit().putInt("main.start_tab", selected == 0 ? 0 : 2).apply();
+            bind(style);
+        });
+        startPage.setTag("main-start-page");
+        startPage.addRow(body, "默认打开", 0);
+        liquid = Ui.switchRow(body, "液态材质", "main-liquid");
+        liquid.setOnCheckedChangeListener((button, checked) -> {
+            if (binding)
+                return;
+            Repository.prefs(this).edit().putBoolean("main.liquid", checked).apply();
+            bind(style);
+            recreateForAppearance();
+        });
         backgroundMode = new SlidingChoice(this, new String[]{"关", "原生", "兼容", "自定义"}, "background-mode-",
                 index -> {
                     if (binding)
@@ -127,27 +145,6 @@ public final class MainStyleActivity extends ThemedActivity {
         blurStatus = Ui.text(this, "", 12, R.color.muted);
         blurStatus.setTag("main-blur-status");
         transparencyControls.addView(blurStatus);
-        Ui.space(body, 20);
-        iconValue = Ui.text(this, "", 13, R.color.muted);
-        icons = slider(body, "图标大小", "main-icon-size", 32, 64, 2, iconValue);
-        labelValue = Ui.text(this, "", 13, R.color.muted);
-        labels = slider(body, "应用名大小", "main-label-size", 14, 20, 1, labelValue);
-        Ui.space(body, 8);
-        reasons = new SlidingChoice(this, MainStyle.REASONS, "main-reason-", index -> update(new MainStyle(style.iconDp,
-                style.labelSp, style.background, index, style.showHidden, style.transparency, style.blur)));
-        reasons.setTag("main-reasons");
-        reasons.addRow(body, "推荐理由", 1);
-        Ui.space(body, 12);
-        hidden = new MaterialSwitch(this);
-        hidden.setTag("main-show-hidden");
-        hidden.setText("显示隐藏应用");
-        hidden.setTextSize(16);
-        hidden.setTextColor(Ui.color(this, R.color.ink));
-        body.addView(hidden, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-        body.addView(Ui.text(this, "仅在主界面显示，桌面组件仍不推荐", 12, R.color.muted));
-        icons.addOnChangeListener((slider, value, fromUser) -> fromControls());
-        labels.addOnChangeListener((slider, value, fromUser) -> fromControls());
-        hidden.setOnCheckedChangeListener((button, checked) -> fromControls());
         bind(style);
         Context app = getApplicationContext();
         Repository.WORK.execute(() -> {
@@ -186,7 +183,7 @@ public final class MainStyleActivity extends ThemedActivity {
             importWallpaper();
             return;
         }
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        new GlassDialogBuilder(this)
                 .setTitle("读取当前壁纸")
                 .setMessage(android.os.Build.VERSION.SDK_INT >= 33
                         ? "当前 Android 版本需要授予所有文件访问权限，才能读取桌面壁纸。仅在点击读取时获取并缓存壁纸；也可改用自定义图片，无需此权限。"
@@ -258,28 +255,6 @@ public final class MainStyleActivity extends ThemedActivity {
         }
     }
 
-    private Slider slider(LinearLayout body, String label, String tag, int min, int max, int step, TextView value) {
-        Slider slider = new Slider(this);
-        slider.setTag(tag);
-        slider.setContentDescription(label);
-        slider.setValueFrom(min);
-        slider.setValueTo(max);
-        slider.setStepSize(step);
-        slider.setValue(min);
-        slider.setTickVisible(false);
-        Ui.styleSlider(slider);
-        Ui.sliderRow(body, label, slider, value,
-                tag.equals("main-icon-size") ? MainStyle.defaults().iconDp : MainStyle.defaults().labelSp);
-        Ui.space(body, 12);
-        return slider;
-    }
-
-    private void fromControls() {
-        if (!binding)
-            update(new MainStyle(Math.round(icons.getValue()), Math.round(labels.getValue()), style.background,
-                    style.reasons, hidden.isChecked(), style.transparency, style.blur));
-    }
-
     private void update(MainStyle value) {
         if (style.background != value.background)
             WidgetAppearance.request(this);
@@ -291,9 +266,11 @@ public final class MainStyleActivity extends ThemedActivity {
     }
 
     private void restoreStyle(MainStyle value, int mode, int scheme, int seed, String wallpaperImage,
-            String customImage) {
+            String customImage, boolean liquidEnabled, int startTab) {
         BackgroundImages.select(this, MainStyle.IMAGE, wallpaperImage);
         BackgroundImages.select(this, MainStyle.CUSTOM_IMAGE, customImage);
+        Repository.prefs(this).edit().putBoolean("main.liquid", liquidEnabled).putInt("main.start_tab", startTab)
+                .apply();
         bind(value);
         boolean seedChanged = seed != Appearance.seed(this);
         Repository.prefs(this).edit().putInt("appearance.seed", seed).apply();
@@ -336,14 +313,12 @@ public final class MainStyleActivity extends ThemedActivity {
         imageStatus.setVisibility(importing || (MainStyle.imageMode(value.background) && !BackgroundImages.exists(this))
                 ? View.VISIBLE
                 : View.GONE);
-        icons.setValue(value.iconDp);
-        labels.setValue(value.labelSp);
-        hidden.setChecked(value.showHidden);
-        iconValue.setText(getString(R.string.widget_scale, Math.round(value.iconDp * 100 / 44f)));
-        labelValue.setText(String.valueOf(value.labelSp));
-        reasons.select(value.reasons, true);
+        liquid.setChecked(MainStyle.liquid(this));
+        startPage.select(MainStyle.startTab(this) == 2 ? 1 : 0, true);
         StyleRestore.update(restore,
-                !value.sameAs(original) || Appearance.colorMode(this) != originalColorMode
+                !value.sameAs(original) || MainStyle.liquid(this) != originalLiquid
+                        || MainStyle.startTab(this) != originalStartTab
+                        || Appearance.colorMode(this) != originalColorMode
                         || Appearance.scheme(this) != originalScheme
                         || Appearance.seed(this) != originalSeed
                         || !BackgroundImages.selected(this, MainStyle.IMAGE).equals(originalWallpaperImage)
@@ -409,12 +384,15 @@ public final class MainStyleActivity extends ThemedActivity {
         });
         Ui.sliderRow(content, title, slider, number,
                 tag.equals("main-blur") ? MainStyle.defaults().blur : MainStyle.defaults().transparency);
-        int width = Math.min(Ui.dp(this, 280), getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32));
-        PopupWindow popup = new PopupWindow(content, width, -2, false);
-        popup.setBackgroundDrawable(Ui.shape(this, R.color.surface, 18));
-        popup.setElevation(Ui.dp(this, 8));
-        popup.setOutsideTouchable(true);
-        popup.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
+        android.graphics.Rect frame = AnchoredGlassPopup.visibleFrame(this, anchor);
+        int margin = Ui.dp(this, 12);
+        int width = Math.min(Ui.dp(this, 280), Math.max(1, frame.width() - 2 * margin));
+        content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        android.graphics.Rect bounds = BubblePlacement.place(frame, AnchoredGlassPopup.anchorBounds(anchor),
+                width, content.getMeasuredHeight(), margin, Ui.dp(this, 4));
+        AnchoredGlassPopup popup = new AnchoredGlassPopup(this, 18, 8, false, false);
+        popup.surface.addView(content, new FrameLayout.LayoutParams(-1, -2));
         popup.setOnDismissListener(() -> {
             if (adjustment == popup) {
                 adjustment = null;
@@ -423,8 +401,7 @@ public final class MainStyleActivity extends ThemedActivity {
         });
         adjustment = popup;
         activeAdjustment = slider;
-        popup.showAsDropDown(anchor, (anchor.getWidth() - width) / 2, Ui.dp(this, 4));
-
+        popup.show(bounds);
     }
 
     @Override
@@ -484,6 +461,8 @@ public final class MainStyleActivity extends ThemedActivity {
         state.putInt("original-color-mode", originalColorMode);
         state.putInt("original-scheme", originalScheme);
         state.putInt("original-seed", originalSeed);
+        state.putBoolean("original-liquid", originalLiquid);
+        state.putInt("original-start-tab", originalStartTab);
         state.putIntArray("original", new int[]{original.iconDp, original.labelSp, original.background,
                 original.reasons, original.showHidden ? 1 : 0, original.transparency, original.blur});
         super.onSaveInstanceState(state);
