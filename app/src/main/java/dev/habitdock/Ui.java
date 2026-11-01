@@ -87,6 +87,16 @@ final class Ui {
         return androidx.core.graphics.ColorUtils.setAlphaComponent(tone, 84);
     }
 
+    static int imageControlSurface(Context context) {
+        boolean dark = (context.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        return com.google.android.material.color.MaterialColors.getColor(context,
+                dark
+                        ? com.google.android.material.R.attr.colorSurfaceContainerHigh
+                        : com.google.android.material.R.attr.colorSurfaceContainerHighest,
+                color(context, R.color.soft));
+    }
+
     static GradientDrawable card(Context context, int radius) {
         GradientDrawable background = shape(context, R.color.surface, radius);
         if (MainStyle.load(context).hasBackground())

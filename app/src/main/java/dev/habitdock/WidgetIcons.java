@@ -6,11 +6,15 @@ import java.util.*;
 
 final class WidgetIcons {
     static Bitmap source(Drawable drawable) {
-        Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
+        int size = 128;
+        if (drawable instanceof AdaptiveIconDrawable && drawable.getIntrinsicWidth() > 0)
+            size = Math.min(1024, drawable.getIntrinsicWidth());
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
-        drawable.setBounds(0, 0, 128, 128);
+        drawable.setBounds(0, 0, size, size);
         // Draw adaptive layers before the OS mask, so the chosen shape can be square or
-        // round.
+        // round. Their children may have fixed dp sizes, so render at the drawable's
+        // density-aware intrinsic size before scaling to the common bitmap size.
         if (drawable instanceof AdaptiveIconDrawable) {
             AdaptiveIconDrawable adaptive = (AdaptiveIconDrawable) drawable;
             if (adaptive.getBackground() != null)
@@ -19,7 +23,11 @@ final class WidgetIcons {
                 adaptive.getForeground().draw(canvas);
         } else
             drawable.draw(canvas);
-        return bitmap;
+        if (size == 128)
+            return bitmap;
+        Bitmap scaled = Bitmap.createScaledBitmap(bitmap, 128, 128, true);
+        bitmap.recycle();
+        return scaled;
     }
 
     static Map<String, Bitmap> inset(Map<String, Bitmap> icons, int percent) {

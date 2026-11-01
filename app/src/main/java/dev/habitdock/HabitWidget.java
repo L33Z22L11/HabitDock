@@ -14,6 +14,7 @@ import java.util.*;
 
 public class HabitWidget extends AppWidgetProvider {
     static final int[] ROWS = {R.id.row1, R.id.row2, R.id.row3, R.id.row4, R.id.row5};
+    private static volatile boolean publishedThisProcess;
     static final String REFRESH = "dev.habitdock.REFRESH";
     static final String REFRESH_IF_DUE = "dev.habitdock.REFRESH_IF_DUE",
             MANUAL_REFRESH = "dev.habitdock.MANUAL_REFRESH";
@@ -49,6 +50,11 @@ public class HabitWidget extends AppWidgetProvider {
         long rendered = c.getSharedPreferences("widget_runtime", Context.MODE_PRIVATE).getLong("last_success", 0);
         if (RefreshPolicy.due(c, System.currentTimeMillis()) || rendered != RefreshPolicy.last(c))
             update(c, false);
+        else if (!publishedThisProcess)
+            // The host can lose its RemoteViews while our saved recommendation
+            // timestamp stays current. Republish once after a cold start without
+            // changing the recommendation refresh schedule.
+            repaint(c);
     }
 
     @Override
@@ -222,9 +228,11 @@ public class HabitWidget extends AppWidgetProvider {
             }
         }
         synchronized (Repository.PRIVACY_LOCK) {
-            if (published && version == Repository.privacyVersion)
+            if (published && version == Repository.privacyVersion) {
                 c.getSharedPreferences("widget_runtime", Context.MODE_PRIVATE).edit()
                         .putLong("last_success", current.stamp).apply();
+                publishedThisProcess = true;
+            }
         }
     }
 

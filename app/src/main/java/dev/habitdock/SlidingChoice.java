@@ -43,7 +43,9 @@ final class SlidingChoice extends FrameLayout {
                 ? com.google.android.material.R.attr.colorSurfaceContainerHighest
                 : com.google.android.material.R.attr.colorSurfaceContainerLowest);
         if (MainStyle.load(context).hasBackground()) {
-            container = Ui.controlSurface(context);
+            container = MainStyle.imageMode(MainStyle.load(context).background)
+                    ? Ui.imageControlSurface(context)
+                    : Ui.controlSurface(context);
             selection = androidx.core.graphics.ColorUtils.setAlphaComponent(selection, 160);
         }
         setBackground(shape(container, 14));

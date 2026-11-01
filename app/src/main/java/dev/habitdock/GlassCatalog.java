@@ -1,5 +1,8 @@
 package dev.habitdock;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.icu.text.AlphabeticIndex;
 import android.text.*;
@@ -15,10 +18,12 @@ import java.util.function.BiConsumer;
 @android.annotation.SuppressLint("ViewConstructor")
 final class GlassCatalog extends LinearLayout {
     private static final String LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#";
+    private static final float INDEX_DIM_ALPHA = .23f;
+    private static final int INDEX_RESTORE_MS = 5000;
     private final AlphabeticIndex.ImmutableIndex<Repository.App> alphabet = new AlphabeticIndex<Repository.App>(
             Locale.SIMPLIFIED_CHINESE).addLabels(Locale.ENGLISH).buildImmutableIndex();
     private final List<Repository.App> apps = new ArrayList<>(), visible = new ArrayList<>();
-    private final Map<String, Integer> positions = new HashMap<>();
+    private final Map<String, Integer> positions = new HashMap<>(), lastPositions = new HashMap<>();
     private final Map<String, String> buckets = new HashMap<>();
     private final GridView grid;
     private final EditText search;
@@ -27,6 +32,8 @@ final class GlassCatalog extends LinearLayout {
     private final BaseAdapter adapter;
     private final BiConsumer<Repository.App, View> menu;
     private String activeLetter = "";
+    private float indexDim;
+    private ValueAnimator indexFade;
     private Set<String> systemApps = Collections.emptySet();
     private int appType;
     private ImageButton clear, filter, display;
@@ -160,8 +167,12 @@ final class GlassCatalog extends LinearLayout {
         empty.setGravity(Gravity.CENTER);
         host.addView(empty, new FrameLayout.LayoutParams(-1, -1));
         bubble = Ui.text(context, "", 48, R.color.ink);
+        bubble.setTag("catalog-index-bubble");
         bubble.setGravity(Gravity.CENTER);
         bubble.setBackground(Ui.card(context, 50));
+        if (MainStyle.imageMode(MainStyle.load(context).background))
+            ((android.graphics.drawable.GradientDrawable) bubble.getBackground())
+                    .setColor(Ui.imageControlSurface(context));
         bubble.setVisibility(GONE);
         bubble.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         LinearLayout searchRow = FloatingTitleBar.row(context);
@@ -256,7 +267,7 @@ final class GlassCatalog extends LinearLayout {
                 cell.label.setText(app.label);
                 cell.setContentDescription(app.label);
                 IconLoader.bind(context, app.pkg, cell.icon, iconStyle);
-                cell.dim(!activeLetter.isEmpty() && !activeLetter.equals(cell.bucket));
+                cell.dim(!activeLetter.isEmpty() && !activeLetter.equals(cell.bucket) ? indexDim : 0);
                 cell.setOnClickListener(v -> Ui.launch(context, app.pkg));
                 cell.setOnLongClickListener(v -> {
                     menu.accept(app, v);
@@ -305,7 +316,7 @@ final class GlassCatalog extends LinearLayout {
         grid.smoothScrollBy(0, 0);
         visible.clear();
         positions.clear();
-        activeLetter = "";
+        lastPositions.clear();
         String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
         for (Repository.App app : apps) {
             if (appType == 1 && systemApps.contains(app.pkg) || appType == 2 && !systemApps.contains(app.pkg))
@@ -313,6 +324,7 @@ final class GlassCatalog extends LinearLayout {
             if (!(app.label + " " + app.pkg).toLowerCase(Locale.ROOT).contains(query))
                 continue;
             positions.putIfAbsent(buckets.get(app.pkg), visible.size());
+            lastPositions.put(buckets.get(app.pkg), visible.size());
             visible.add(app);
         }
         adapter.notifyDataSetChanged();
@@ -328,17 +340,17 @@ final class GlassCatalog extends LinearLayout {
 
     private void jump(String value, boolean fast) {
         cancelRestore();
-        if (value.equals(activeLetter))
+        boolean fading = indexFade != null;
+        cancelIndexFade();
+        if (value.equals(activeLetter) && !fading)
             return;
         activeLetter = value;
+        indexDim = 1;
         Integer position = positions.get(value);
         if (position != null) {
-            int letterIndex = LETTERS.indexOf(value);
-            View label = indexLabels.get(letterIndex);
-            label.getLocationInWindow(indexLocation);
-            grid.getLocationInWindow(gridLocation);
-            int anchorY = indexLocation[1] + label.getHeight() / 2 - gridLocation[1];
-            scrollToIndex(position, fast ? 90 : 240, anchorY);
+            int target = indexTarget(value);
+            if (target >= 0)
+                scrollToOffset(target, fast ? 90 : 240);
         }
         updateVisibleAlpha();
         performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 34
@@ -351,7 +363,38 @@ final class GlassCatalog extends LinearLayout {
         bubble.setVisibility(VISIBLE);
     }
 
-    private void scrollToIndex(int position, int duration, int anchorY) {
+    private int indexTarget(String letter) {
+        int columns = Math.max(1, grid.getNumColumns());
+        View first = grid.getChildAt(0);
+        if (first == null)
+            return -1;
+        int stride = first.getHeight() + grid.getVerticalSpacing();
+        if (stride <= 0)
+            return -1;
+        grid.getLocationInWindow(gridLocation);
+        int target = 0;
+        for (int i = 0; i < LETTERS.length(); i++) {
+            String current = LETTERS.substring(i, i + 1);
+            Integer position = positions.get(current);
+            if (position != null) {
+                View label = indexLabels.get(i);
+                label.getLocationInWindow(indexLocation);
+                int anchorY = indexLocation[1] + label.getHeight() / 2 - gridLocation[1];
+                int offset = indexScrollOffset(position, lastPositions.get(current), columns, visible.size(),
+                        first.getHeight(),
+                        grid.getVerticalSpacing(), grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(),
+                        anchorY);
+                // Several letters can share a grid row. Moving down the rail must
+                // never make that row scroll backwards just to follow the finger.
+                target = Math.max(target, offset);
+            }
+            if (current.equals(letter))
+                return position == null ? -1 : target;
+        }
+        return -1;
+    }
+
+    private void scrollToOffset(int end, int duration) {
         int columns = Math.max(1, grid.getNumColumns());
         View first = grid.getChildAt(0);
         if (first == null)
@@ -360,8 +403,6 @@ final class GlassCatalog extends LinearLayout {
         if (stride <= 0)
             return;
         int start = grid.getFirstVisiblePosition() / columns * stride + grid.getPaddingTop() - first.getTop();
-        int end = indexScrollOffset(position, columns, visible.size(), first.getHeight(), grid.getVerticalSpacing(),
-                grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(), anchorY);
         if (indexScrollPosted && end == indexScrollTarget) {
             indexScrollDuration = duration;
             return;
@@ -411,6 +452,11 @@ final class GlassCatalog extends LinearLayout {
 
     private void stopIndexScroll() {
         cancelRestore();
+        cancelIndexFade();
+        activeLetter = "";
+        indexDim = 0;
+        updateVisibleAlpha();
+        paintIndex();
         if (indexScrollPosted)
             grid.removeCallbacks(indexScrollStep);
         indexScrollPosted = false;
@@ -424,16 +470,25 @@ final class GlassCatalog extends LinearLayout {
         }
     }
 
-    private static int indexScrollOffset(int position, int columns, int count, int rowHeight, int spacing,
+    private static int indexScrollOffset(int position, int lastPosition, int columns, int count, int rowHeight,
+            int spacing,
             int height, int paddingTop, int paddingBottom, int anchorY) {
         int stride = rowHeight + spacing;
-        int halfRow = rowHeight / 2;
-        int minY = paddingTop + halfRow;
-        int maxY = Math.max(minY, height - paddingBottom - halfRow);
-        int targetY = Math.max(minY, Math.min(maxY, anchorY));
+        int groupTop = paddingTop + position / columns * stride;
+        int groupBottom = paddingTop + lastPosition / columns * stride + rowHeight;
+        int availableTop = paddingTop;
+        int availableBottom = Math.max(availableTop, height - paddingBottom);
+        int groupHeight = groupBottom - groupTop;
+        int availableHeight = availableBottom - availableTop;
+        // Keep the whole group clear of the header and navigation when it fits.
+        // For a taller group, center its visible portion in the usable area.
+        int targetY = groupHeight <= availableHeight
+                ? Math.max(availableTop + groupHeight / 2,
+                        Math.min(availableBottom - (groupHeight + 1) / 2, anchorY))
+                : (availableTop + availableBottom) / 2;
         int rows = (count + columns - 1) / columns;
         int max = Math.max(0, rows * stride - spacing - height + paddingTop + paddingBottom);
-        return Math.max(0, Math.min(max, position / columns * stride + paddingTop + halfRow - targetY));
+        return Math.max(0, Math.min(max, (groupTop + groupBottom) / 2 - targetY));
     }
 
     @Override
@@ -456,16 +511,44 @@ final class GlassCatalog extends LinearLayout {
             View child = grid.getChildAt(i);
             if (child instanceof AppCell) {
                 AppCell cell = (AppCell) child;
-                cell.dim(!activeLetter.isEmpty() && !activeLetter.equals(cell.bucket));
+                cell.dim(!activeLetter.isEmpty() && !activeLetter.equals(cell.bucket) ? indexDim : 0);
             }
         }
     }
 
     private void endIndex() {
-        activeLetter = "";
-        updateVisibleAlpha();
-        paintIndex();
+        cancelIndexFade();
+        if (!activeLetter.isEmpty()) {
+            ValueAnimator fade = ValueAnimator.ofFloat(indexDim, 0);
+            indexFade = fade;
+            fade.setDuration(INDEX_RESTORE_MS);
+            fade.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            fade.addUpdateListener(animation -> {
+                indexDim = (float) animation.getAnimatedValue();
+                updateVisibleAlpha();
+            });
+            fade.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    indexFade = null;
+                    activeLetter = "";
+                    indexDim = 0;
+                    updateVisibleAlpha();
+                    paintIndex();
+                }
+            });
+            fade.start();
+        }
         bubble.animate().alpha(0).setDuration(180).withEndAction(() -> bubble.setVisibility(GONE)).start();
+    }
+
+    private void cancelIndexFade() {
+        if (indexFade == null)
+            return;
+        indexFade.removeAllListeners();
+        indexFade.removeAllUpdateListeners();
+        indexFade.cancel();
+        indexFade = null;
     }
 
     void save(android.os.Bundle state, String prefix) {
@@ -535,16 +618,17 @@ final class GlassCatalog extends LinearLayout {
             setLayoutParams(new AbsListView.LayoutParams(-1, Ui.dp(getContext(), height)));
         }
 
-        void dim(boolean dimmed) {
+        void dim(float amount) {
             // Older vendor hardware renderers may retain a recycled translucent
             // image layer. Limit the workaround to dimmed icons on those devices.
             if (android.os.Build.VERSION.SDK_INT <= 27) {
-                int layer = dimmed ? View.LAYER_TYPE_SOFTWARE : View.LAYER_TYPE_NONE;
+                int layer = amount > 0 ? View.LAYER_TYPE_SOFTWARE : View.LAYER_TYPE_NONE;
                 if (icon.getLayerType() != layer)
                     icon.setLayerType(layer, null);
             }
-            icon.setImageAlpha(dimmed ? 59 : 255);
-            label.setAlpha(dimmed ? .23f : 1f);
+            float alpha = 1f - (1 - INDEX_DIM_ALPHA) * amount;
+            icon.setImageAlpha(Math.round(255 * alpha));
+            label.setAlpha(alpha);
         }
 
         @Override

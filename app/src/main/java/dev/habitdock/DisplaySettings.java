@@ -31,23 +31,28 @@ final class DisplaySettings {
         content.addView(title);
         if (!catalog) {
             Ui.space(content, 12);
+            FormRow time = new FormRow(activity, "时间预览");
+            LinearLayout actions = new LinearLayout(activity);
+            actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            Button preview = Ui.textButton(activity);
+            preview.setAllCaps(false);
+            preview.setTextSize(Ui.FORM_TEXT_SP);
+            preview.setMinWidth(0);
+            preview.setMinimumWidth(0);
+            preview.setPadding(Ui.dp(activity, 12), 0, Ui.dp(activity, 12), 0);
+            preview.setTag("preview-time");
+            preview.setOnClickListener(v -> activity.chooseTime());
+            ImageButton refresh = Ui.icon(activity, R.drawable.ic_refresh, "立即刷新",
+                    v -> activity.refreshRecommendations());
+            refresh.setTag("return-now");
+            actions.addView(preview, new LinearLayout.LayoutParams(-2, Ui.dp(activity, 48)));
+            actions.addView(refresh, new LinearLayout.LayoutParams(Ui.dp(activity, 48), Ui.dp(activity, 48)));
+            time.control(actions, 48, false, null);
+            content.addView(time);
             TextView status = Ui.text(activity, "读取中", 13, R.color.muted);
             status.setTag("recommend-time");
             content.addView(status);
-            LinearLayout actions = new LinearLayout(activity);
-            Button preview = new com.google.android.material.button.MaterialButton(activity, null,
-                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
-            preview.setText("预览其他时间");
-            preview.setTag("preview-time");
-            preview.setOnClickListener(v -> activity.chooseTime());
-            Button refresh = new com.google.android.material.button.MaterialButton(activity, null,
-                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
-            refresh.setTag("return-now");
-            refresh.setOnClickListener(v -> activity.refreshRecommendations());
-            actions.addView(preview, new LinearLayout.LayoutParams(0, -2, 1));
-            actions.addView(refresh, new LinearLayout.LayoutParams(0, -2, 1));
-            content.addView(actions);
-            activity.bindDisplayStatus(status, refresh);
+            activity.bindDisplayStatus(status, preview, refresh);
         }
         Ui.space(content, 16);
         SlidingChoice layout = new SlidingChoice(activity, new String[]{"平铺", "宫格"}, "display-layout-", index -> {

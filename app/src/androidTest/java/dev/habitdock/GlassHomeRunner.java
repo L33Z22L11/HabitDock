@@ -25,13 +25,17 @@ public final class GlassHomeRunner extends Instrumentation {
             runOnMainSync(() -> {
                 try {
                     checkEntryRouting();
+                    checkNativeDetails();
+                    checkAppInfoHandlers();
                     checkMaterialSwitch();
+                    checkImageControlColors();
                     for (int orientation : new int[]{Configuration.ORIENTATION_PORTRAIT,
                             Configuration.ORIENTATION_LANDSCAPE}) {
                         Configuration config = new Configuration(getTargetContext().getResources().getConfiguration());
                         config.orientation = orientation;
                         Context context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config),
                                 true);
+                        checkAdaptiveIconDensity();
                         Configuration normalText = new Configuration(config);
                         normalText.fontScale = 1f;
                         Context sizing = context.createConfigurationContext(normalText);
@@ -389,14 +393,38 @@ public final class GlassHomeRunner extends Instrumentation {
                             Repository.App app = (Repository.App) grid.getAdapter().getItem(i);
                             View cell = grid.getAdapter().getView(i, null, grid);
                             ImageView icon = (ImageView) ((LinearLayout) cell).getChildAt(0);
-                            check(app.label.equals("微信") ? icon.getImageAlpha() == 255 : icon.getImageAlpha() < 80,
+                            check(app.label.equals("微信")
+                                    ? icon.getImageAlpha() == 255
+                                    : icon.getImageAlpha() < 80,
                                     "Chinese initials highlight W while dimming other apps");
                         }
                         motion(catalog, android.view.MotionEvent.ACTION_UP, catalog.getWidth() - Ui.dp(context, 70),
                                 edgeY);
                         LinearLayout restoredCell = (LinearLayout) grid.getAdapter().getView(0, null, grid);
+                        check(((ImageView) restoredCell.getChildAt(0)).getImageAlpha() < 255,
+                                "release retains the dimmed state briefly");
+                        java.lang.reflect.Field fadeField = GlassCatalog.class.getDeclaredField("indexFade");
+                        fadeField.setAccessible(true);
+                        android.animation.ValueAnimator indexAnimator = (android.animation.ValueAnimator) fadeField
+                                .get(catalog);
+                        check(indexAnimator != null && indexAnimator.getDuration() == 5000,
+                                "opacity restoration runs for five seconds");
+                        indexAnimator.setCurrentPlayTime(1000);
+                        restoredCell = (LinearLayout) grid.getAdapter().getView(0, restoredCell, grid);
+                        int earlyAlpha = ((ImageView) restoredCell.getChildAt(0)).getImageAlpha();
+                        indexAnimator.setCurrentPlayTime(3000);
+                        restoredCell = (LinearLayout) grid.getAdapter().getView(0, restoredCell, grid);
+                        int laterAlpha = ((ImageView) restoredCell.getChildAt(0)).getImageAlpha();
+                        check(earlyAlpha > 59 && laterAlpha > earlyAlpha && laterAlpha < 255,
+                                "released icons brighten continuously without a fixed-opacity hold");
+                        motion(catalog, android.view.MotionEvent.ACTION_DOWN, catalog.getWidth() - 1, edgeY);
+                        check(fadeField.get(catalog) == null, "touching the same letter cancels pending restoration");
+                        motion(catalog, android.view.MotionEvent.ACTION_UP, catalog.getWidth() - 1, edgeY);
+                        indexAnimator = (android.animation.ValueAnimator) fadeField.get(catalog);
+                        indexAnimator.end();
+                        restoredCell = (LinearLayout) grid.getAdapter().getView(0, restoredCell, grid);
                         check(((ImageView) restoredCell.getChildAt(0)).getImageAlpha() == 255,
-                                "release restores opacity");
+                                "finished fade restores opacity even for reused cells");
                         EditText query = catalog.findViewWithTag("catalog-search");
                         query.setText("支付宝");
                         check(grid.getAdapter().getCount() == 1, "Chinese search filters app names");
@@ -423,21 +451,43 @@ public final class GlassHomeRunner extends Instrumentation {
                         // main-thread callback. Check the target geometry directly.
                         java.lang.reflect.Method offset = GlassCatalog.class.getDeclaredMethod("indexScrollOffset",
                                 int.class, int.class, int.class, int.class, int.class, int.class, int.class,
-                                int.class, int.class);
+                                int.class, int.class, int.class);
                         offset.setAccessible(true);
                         int columns = grid.getNumColumns(), chosen = 50, target = Ui.dp(context, 340);
                         int rowHeight = grid.getChildAt(0).getHeight(), spacing = grid.getVerticalSpacing();
-                        int end = (int) offset.invoke(null, chosen, columns, 100, rowHeight, spacing,
+                        int end = (int) offset.invoke(null, chosen, chosen, columns, 100, rowHeight, spacing,
                                 grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(), target);
                         int center = chosen / columns * (rowHeight + spacing) + grid.getPaddingTop()
                                 + rowHeight / 2 - end;
                         check(Math.abs(center - target) <= Ui.dp(context, 1),
                                 "index target places its row near the anchor away from list boundaries");
-                        check((int) offset.invoke(null, 0, columns, 100, rowHeight, spacing, grid.getHeight(),
+                        check((int) offset.invoke(null, 0, 0, columns, 100, rowHeight, spacing, grid.getHeight(),
                                 grid.getPaddingTop(), grid.getPaddingBottom(), target) == 0,
                                 "index target is clamped at the start of the list");
-                        java.lang.reflect.Method scroll = GlassCatalog.class.getDeclaredMethod("scrollToIndex",
-                                int.class, int.class, int.class);
+                        int groupLast = chosen + columns * 2 - 1;
+                        int nearBottom = grid.getHeight() - grid.getPaddingBottom();
+                        int groupOffset = (int) offset.invoke(null, chosen, groupLast, columns, 100, rowHeight, spacing,
+                                grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(), nearBottom);
+                        int groupTop = grid.getPaddingTop() + chosen / columns * (rowHeight + spacing) - groupOffset;
+                        int groupBottom = grid.getPaddingTop() + groupLast / columns * (rowHeight + spacing)
+                                + rowHeight - groupOffset;
+                        check(groupTop >= grid.getPaddingTop() && groupBottom <= nearBottom,
+                                "a multi-row group near the bottom stays fully clear of the header and navigation");
+                        check(Math.abs(groupBottom - nearBottom) <= 1,
+                                "the whole group is as close to the finger as the navigation allows");
+                        int largeLast = 149;
+                        int largeOffset = (int) offset.invoke(null, chosen, largeLast, columns, 200, rowHeight, spacing,
+                                grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(), nearBottom);
+                        int largeTop = grid.getPaddingTop() + chosen / columns * (rowHeight + spacing) - largeOffset;
+                        int largeBottom = grid.getPaddingTop() + largeLast / columns * (rowHeight + spacing)
+                                + rowHeight - largeOffset;
+                        check(largeTop <= grid.getPaddingTop() && largeBottom >= nearBottom,
+                                "an oversized group fills the unobscured viewport");
+                        check(Math.abs((largeTop + largeBottom) / 2
+                                - (grid.getPaddingTop() + nearBottom) / 2) <= 1,
+                                "an oversized group is centered within the unobscured viewport");
+                        java.lang.reflect.Method scroll = GlassCatalog.class.getDeclaredMethod("scrollToOffset",
+                                int.class, int.class);
                         scroll.setAccessible(true);
                         java.lang.reflect.Field posted = GlassCatalog.class.getDeclaredField("indexScrollPosted");
                         java.lang.reflect.Field scrollTarget = GlassCatalog.class.getDeclaredField("indexScrollTarget");
@@ -447,16 +497,18 @@ public final class GlassHomeRunner extends Instrumentation {
                         frameTime.setAccessible(true);
                         int firstBefore = grid.getFirstVisiblePosition();
                         int topBefore = grid.getChildAt(0).getTop();
-                        scroll.invoke(catalog, chosen, 90, target);
+                        scroll.invoke(catalog, end, 90);
                         check(posted.getBoolean(catalog), "index scrolling schedules an animation frame");
                         frameTime.setLong(catalog, 123);
-                        scroll.invoke(catalog, 75, 90, target);
+                        int later = (int) offset.invoke(null, 75, 75, columns, 100, rowHeight, spacing,
+                                grid.getHeight(), grid.getPaddingTop(), grid.getPaddingBottom(), target);
+                        scroll.invoke(catalog, later, 90);
                         check(posted.getBoolean(catalog) && frameTime.getLong(catalog) == 123,
                                 "a new index target retargets the pending animation without restarting it");
-                        scroll.invoke(catalog, 0, 90, target);
+                        scroll.invoke(catalog, 0, 90);
                         check(posted.getBoolean(catalog) && scrollTarget.getInt(catalog) == 0,
                                 "dragging back to the start retargets the same animation");
-                        scroll.invoke(catalog, 0, 90, target + Ui.dp(context, 20));
+                        scroll.invoke(catalog, 0, 90);
                         check(posted.getBoolean(catalog) && frameTime.getLong(catalog) == 123,
                                 "repeated gestures clamped to the top do not restart animation");
                         check(grid.getTranslationY() == 0 && grid.getFirstVisiblePosition() == firstBefore
@@ -483,6 +535,28 @@ public final class GlassHomeRunner extends Instrumentation {
                         check(scrollTarget.getInt(catalog) == sameLetterTarget
                                 && frameTime.getLong(catalog) == sameLetterFrame,
                                 "moving within one index letter does not retarget the list");
+                        query.setText("");
+                        Map<String, Repository.App> sharedRow = new LinkedHashMap<>();
+                        for (int i = 0; i < 50; i++)
+                            sharedRow.put("test.a" + i, new Repository.App("test.a" + i, "A" + i));
+                        sharedRow.put("test.b", new Repository.App("test.b", "Bee"));
+                        sharedRow.put("test.c", new Repository.App("test.c", "Cee"));
+                        for (int i = 0; i < 5; i++)
+                            sharedRow.put("test.c" + i, new Repository.App("test.c" + i, "Cee" + i));
+                        for (int i = 0; i < 60; i++)
+                            sharedRow.put("test.z" + i, new Repository.App("test.z" + i, "Z" + i));
+                        catalog.show(sharedRow);
+                        layout(catalog, Ui.dp(context, 420), Ui.dp(context, 650));
+                        java.lang.reflect.Method indexTarget = GlassCatalog.class.getDeclaredMethod("indexTarget",
+                                String.class);
+                        indexTarget.setAccessible(true);
+                        int bTarget = (int) indexTarget.invoke(catalog, "B");
+                        int cTarget = (int) indexTarget.invoke(catalog, "C");
+                        int zTarget = (int) indexTarget.invoke(catalog, "Z");
+                        check(bTarget > 0 && cTarget >= bTarget && zTarget > cTarget,
+                                "letter targets do not scroll backwards and later rows still advance: "
+                                        + bTarget + ", " + cTarget + ", " + zTarget + "; columns="
+                                        + grid.getNumColumns() + "; items=" + grid.getAdapter().getCount());
                     }
                 } catch (Throwable error) {
                     failure[0] = error;
@@ -515,6 +589,29 @@ public final class GlassHomeRunner extends Instrumentation {
         if (!condition)
             throw new AssertionError(description);
         checks++;
+    }
+
+    private void checkAdaptiveIconDensity() {
+        android.graphics.drawable.LayerDrawable foreground = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{
+                        new android.graphics.drawable.ColorDrawable(android.graphics.Color.RED)});
+        android.graphics.drawable.AdaptiveIconDrawable adaptive = new android.graphics.drawable.AdaptiveIconDrawable(
+                new android.graphics.drawable.ColorDrawable(android.graphics.Color.BLUE), foreground);
+        int intrinsic = adaptive.getIntrinsicWidth();
+        if (intrinsic <= 0 || intrinsic > 1024)
+            return;
+        int childSize = Math.max(1, intrinsic / 2);
+        foreground.setLayerSize(0, childSize, childSize);
+        foreground.setLayerGravity(0, Gravity.CENTER);
+        android.graphics.Bitmap rendered = WidgetIcons.source(adaptive);
+        int redWidth = 0;
+        for (int x = 0; x < rendered.getWidth(); x++)
+            if (rendered.getPixel(x, 64) == android.graphics.Color.RED)
+                redWidth++;
+        int expected = Math.round(128f * childSize / intrinsic);
+        check(Math.abs(redWidth - expected) <= 2,
+                "adaptive foreground with fixed dp dimensions respects the drawable's density: actual=" + redWidth
+                        + ", expected=" + expected + ", child=" + childSize + ", intrinsic=" + intrinsic);
     }
 
     private void checkEntryRouting() {
@@ -552,6 +649,42 @@ public final class GlassHomeRunner extends Instrumentation {
         check(GlassHomeActivity.entryTab(widget, null, 2) == 2
                 && GlassHomeActivity.entryTab(widget, null, 0) == 0,
                 "a subsequent entry uses the current preference");
+    }
+
+    private void checkNativeDetails() throws Exception {
+        Context context = getTargetContext();
+        android.content.pm.PackageManager pm = context.getPackageManager();
+        android.content.Intent standard = new android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + context.getPackageName()));
+        android.content.ComponentName resolved = standard.resolveActivity(pm);
+        android.content.Intent alternative = NativeAppDetails.find(context, context.getPackageName());
+        if (resolved != null && alternative != null) {
+            android.content.pm.ActivityInfo regular = pm.getActivityInfo(resolved, 0);
+            android.content.pm.ActivityInfo other = pm.getActivityInfo(alternative.getComponent(), 0);
+            String regularTarget = regular.targetActivity == null ? regular.name : regular.targetActivity;
+            String otherTarget = other.targetActivity == null ? other.name : other.targetActivity;
+            check(!regular.packageName.equals(other.packageName) || !regularTarget.equals(otherTarget),
+                    "alternative app details does not duplicate the standard activity through an alias");
+        }
+    }
+
+    private void checkAppInfoHandlers() {
+        Context context = getTargetContext();
+        String packageName = context.getPackageName();
+        android.content.Intent info = AppInfoHandlers.find(context, packageName);
+        android.content.Intent libChecker = new android.content.Intent(android.content.Intent.ACTION_SHOW_APP_INFO)
+                .setPackage("com.absinthe.libchecker");
+        if (!context.getPackageManager().queryIntentActivities(libChecker,
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY).isEmpty())
+            check(info != null, "installed app information handlers are discoverable");
+        if (info != null) {
+            android.content.Intent nested = info.getParcelableExtra(android.content.Intent.EXTRA_INTENT);
+            android.content.Intent target = nested != null ? nested : info;
+            check(target != null && android.content.Intent.ACTION_SHOW_APP_INFO.equals(target.getAction())
+                    && packageName.equals(target.getStringExtra(android.content.Intent.EXTRA_PACKAGE_NAME)),
+                    "external app information receives the selected package name");
+        }
     }
 
     private void checkPickerWidths(Context context) {
@@ -669,6 +802,54 @@ public final class GlassHomeRunner extends Instrumentation {
             image.recycle();
             context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config), true);
             check(MainStyle.liquid(context), "material switch reads its saved enabled state");
+        }
+    }
+
+    private void checkImageControlColors() {
+        for (int night : new int[]{Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
+            Configuration config = new Configuration(getTargetContext().getResources().getConfiguration());
+            config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
+            Context context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config), true);
+            android.content.SharedPreferences preferences = Repository.prefs(context);
+            boolean hadBackground = preferences.contains("main.background");
+            int originalBackground = preferences.getInt("main.background", 0);
+            try {
+                for (int mode : new int[]{MainStyle.IMAGE, MainStyle.CUSTOM_IMAGE}) {
+                    preferences.edit().putInt("main.background", mode).commit();
+                    int token = com.google.android.material.color.MaterialColors.getColor(context,
+                            night == Configuration.UI_MODE_NIGHT_YES
+                                    ? com.google.android.material.R.attr.colorSurfaceContainerHigh
+                                    : com.google.android.material.R.attr.colorSurfaceContainerHighest,
+                            Ui.color(context, R.color.soft));
+                    SlidingChoice choice = new SlidingChoice(context, new String[]{"一", "二"}, "test-color-",
+                            ignored -> {
+                            });
+                    int track = ((android.graphics.drawable.GradientDrawable) choice.getBackground()).getColor()
+                            .getDefaultColor();
+                    check(track == token, "image background segment track uses the existing container token");
+                    int selection = ((android.graphics.drawable.GradientDrawable) choice.getChildAt(0).getBackground())
+                            .getColor().getDefaultColor();
+                    int expectedSelection = com.google.android.material.color.MaterialColors.getColor(context,
+                            night == Configuration.UI_MODE_NIGHT_YES
+                                    ? com.google.android.material.R.attr.colorSurfaceContainerHighest
+                                    : com.google.android.material.R.attr.colorSurfaceContainerLowest,
+                            Ui.color(context, R.color.surface));
+                    check(selection == androidx.core.graphics.ColorUtils.setAlphaComponent(expectedSelection, 160),
+                            "image background keeps the existing segment highlight");
+                    GlassCatalog catalog = new GlassCatalog(context, (app, anchor) -> {
+                    });
+                    View bubble = catalog.findViewWithTag("catalog-index-bubble");
+                    check(((android.graphics.drawable.GradientDrawable) bubble.getBackground()).getColor()
+                            .getDefaultColor() == token, "index bubble shares the container token");
+                }
+            } finally {
+                android.content.SharedPreferences.Editor edit = preferences.edit();
+                if (hadBackground)
+                    edit.putInt("main.background", originalBackground);
+                else
+                    edit.remove("main.background");
+                edit.commit();
+            }
         }
     }
 

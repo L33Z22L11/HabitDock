@@ -139,6 +139,15 @@ public final class ReleaseUiRunner extends Instrumentation {
         java.lang.reflect.Field preview = GlassHomeActivity.class.getDeclaredField("previewTime");
         preview.setAccessible(true);
         check(preview.getLong(home) != 0, "Time selection starts a preview");
+        long selectedTime = preview.getLong(home);
+        check(java.time.Instant.ofEpochMilli(selectedTime).atZone(java.time.ZoneId.systemDefault())
+                .getDayOfWeek() == java.time.DayOfWeek.MONDAY, "Weekday and time are confirmed together");
+        check(node("预览其他时间").performAction(AccessibilityNodeInfo.ACTION_CLICK), "Reopen time preview");
+        idle();
+        check(node("星期二").performAction(AccessibilityNodeInfo.ACTION_CLICK), "Change weekday before cancel");
+        check(node("取消").performAction(AccessibilityNodeInfo.ACTION_CLICK), "Cancel time preview");
+        idle();
+        check(preview.getLong(home) == selectedTime, "Cancelling leaves the preview time unchanged");
         check(tagged(home, "preview-indicator").getVisibility() == View.VISIBLE,
                 "Home keeps a visible preview indicator after the drawer closes");
         check(node("回到实时并刷新").performAction(AccessibilityNodeInfo.ACTION_CLICK), "Return to live time");

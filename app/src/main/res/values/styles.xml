@@ -49,6 +49,12 @@
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
     </style>
+    <style name="TimePreviewPickerTheme">
+        <item name="android:timePickerStyle">@style/TimePreviewPicker</item>
+    </style>
+    <style name="TimePreviewPicker" parent="@android:style/Widget.Material.TimePicker">
+        <item name="android:timePickerMode">spinner</item>
+    </style>
     <style name="GlassBlurDialogTheme" parent="AppDialogTheme">
         <item name="android:windowIsTranslucent">true</item>
     </style>

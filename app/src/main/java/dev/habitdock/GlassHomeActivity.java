@@ -54,7 +54,8 @@ public final class GlassHomeActivity extends ThemedActivity {
     private long previewTime, updateTime;
     private String loadStatus = "读取中";
     private WeakReference<TextView> displayStatus = new WeakReference<>(null);
-    private WeakReference<Button> displayRefresh = new WeakReference<>(null);
+    private WeakReference<Button> displayPreview = new WeakReference<>(null);
+    private WeakReference<ImageButton> displayRefresh = new WeakReference<>(null);
     private final androidx.activity.result.ActivityResultLauncher<Intent> homeRequest = registerForActivityResult(
             new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(), result -> {
                 if (android.os.Build.VERSION.SDK_INT < 29)
@@ -447,8 +448,9 @@ public final class GlassHomeActivity extends ThemedActivity {
         });
     }
 
-    void bindDisplayStatus(TextView status, Button refresh) {
+    void bindDisplayStatus(TextView status, Button preview, ImageButton refresh) {
         displayStatus = new WeakReference<>(status);
+        displayPreview = new WeakReference<>(preview);
         displayRefresh = new WeakReference<>(refresh);
         updateDisplayStatus();
     }
@@ -469,16 +471,22 @@ public final class GlassHomeActivity extends ThemedActivity {
         }
         TextView status = displayStatus.get();
         if (status != null) {
-            String text = updateTime == 0 ? "更新时间：暂无" : "更新时间：" + formatTime(updateTime, false);
-            if (previewTime != 0)
-                text += "\n预览时间：" + formatTime(previewTime, true);
+            String text = updateTime == 0 ? "暂无更新时间" : "更新时间 " + formatTime(updateTime, false);
             if (!loadStatus.isEmpty())
-                text += "\n" + loadStatus;
+                text += "  " + loadStatus;
             status.setText(text);
         }
-        Button refresh = displayRefresh.get();
-        if (refresh != null)
-            refresh.setText(previewTime == 0 ? "立即刷新" : "回到实时并刷新");
+        Button preview = displayPreview.get();
+        if (preview != null) {
+            preview.setText(previewTime == 0 ? "选择时间" : formatTime(previewTime, true));
+            preview.setContentDescription("预览其他时间");
+        }
+        ImageButton refresh = displayRefresh.get();
+        if (refresh != null) {
+            String label = previewTime == 0 ? "立即刷新" : "回到实时并刷新";
+            refresh.setContentDescription(label);
+            refresh.setTooltipText(label);
+        }
     }
 
     private String formatTime(long time, boolean preview) {
@@ -488,19 +496,36 @@ public final class GlassHomeActivity extends ThemedActivity {
 
     void chooseTime() {
         String[] days = {"星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"};
-        new GlassDialogBuilder(this).setTitle("预览什么时候？")
-                .setItems(days, (dialog, which) -> {
-                    ZonedDateTime current = Instant.ofEpochMilli(previewTime == 0
-                            ? System.currentTimeMillis()
-                            : previewTime).atZone(ZoneId.systemDefault());
-                    new android.app.TimePickerDialog(this, (picker, hour, minute) -> {
-                        LocalDate date = LocalDate.now().with(
-                                java.time.temporal.TemporalAdjusters.nextOrSame(DayOfWeek.of(which + 1)));
-                        previewTime = date.atTime(hour, minute).atZone(ZoneId.systemDefault()).toInstant()
-                                .toEpochMilli();
-                        load(false);
-                    }, current.getHour(), current.getMinute(), true).show();
-                }).show();
+        ZonedDateTime current = Instant.ofEpochMilli(previewTime == 0
+                ? System.currentTimeMillis()
+                : previewTime).atZone(ZoneId.systemDefault());
+        LinearLayout content = Ui.column(this);
+        content.setPadding(Ui.dp(this, 24), 0, Ui.dp(this, 24), 0);
+        TextView weekday = Ui.text(this, "星期", Ui.FORM_TEXT_SP, R.color.ink);
+        content.addView(weekday);
+        Ui.space(content, 8);
+        SlidingChoice day = new SlidingChoice(this, new String[]{"一", "二", "三", "四", "五", "六", "日"},
+                "preview-day-", ignored -> {
+                });
+        day.minimumSegmentWidth(0);
+        day.select(current.getDayOfWeek().getValue() - 1, false);
+        for (int i = 0; i < days.length; i++)
+            day.findViewWithTag("preview-day-" + i).setContentDescription(days[i]);
+        content.addView(day, new LinearLayout.LayoutParams(-1, Ui.dp(this, Ui.SEGMENT_HEIGHT)));
+        Ui.space(content, 12);
+        TimePicker picker = new TimePicker(new ContextThemeWrapper(this, R.style.TimePreviewPickerTheme));
+        picker.setTag("preview-clock");
+        picker.setIs24HourView(true);
+        picker.setHour(current.getHour());
+        picker.setMinute(current.getMinute());
+        content.addView(picker, new LinearLayout.LayoutParams(-1, -2));
+        GlassFormDialog.show(this, "时间预览", content, () -> {
+            LocalDate date = LocalDate.now().with(
+                    java.time.temporal.TemporalAdjusters.nextOrSame(DayOfWeek.of(day.selection() + 1)));
+            previewTime = date.atTime(picker.getHour(), picker.getMinute()).atZone(ZoneId.systemDefault()).toInstant()
+                    .toEpochMilli();
+            load(false);
+        });
     }
 
     @Override

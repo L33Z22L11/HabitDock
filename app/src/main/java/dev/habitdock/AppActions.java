@@ -39,13 +39,13 @@ final class AppActions {
                     perform(activity, app, 2, onChanged);
                 }
             }));
-        Intent libChecker = LibCheckerDetails.find(activity, app.pkg);
-        if (libChecker != null)
-            actions.add(new Action("LibChecker", R.drawable.ic_library_chip, () -> {
+        Intent appInfo = AppInfoHandlers.find(activity, app.pkg);
+        if (appInfo != null)
+            actions.add(new Action("打开方式", R.drawable.ic_library_chip, () -> {
                 try {
-                    activity.startActivity(libChecker);
+                    activity.startActivity(appInfo);
                 } catch (ActivityNotFoundException | SecurityException error) {
-                    Ui.toast(activity, "无法打开 LibChecker");
+                    Ui.toast(activity, "没有可用的应用信息工具");
                 }
             }));
         Rect frame = AnchoredGlassPopup.visibleFrame(activity, anchor);
