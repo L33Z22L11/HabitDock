@@ -41,7 +41,7 @@ public final class AppearanceRunner extends Instrumentation {
                 com.google.android.material.color.MaterialColors.getColor(preview,
                         com.google.android.material.R.attr.colorSurfaceContainer, 0xfff5f7f5),
                 com.google.android.material.color.MaterialColors.getColor(preview,
-                        com.google.android.material.R.attr.colorPrimary, 0xff246e5c),
+                        androidx.appcompat.R.attr.colorPrimary, 0xff246e5c),
                 com.google.android.material.color.MaterialColors.getColor(preview,
                         com.google.android.material.R.attr.colorOutlineVariant, 0xff737873)};
     }
@@ -135,7 +135,7 @@ public final class AppearanceRunner extends Instrumentation {
                             .getColor(R.color.surface),
                     "actual Material modal background uses application surface");
             AlertDialog dialog = builder.show();
-            check(attr(dialog.getContext(), com.google.android.material.R.attr.colorPrimary) == current
+            check(attr(dialog.getContext(), androidx.appcompat.R.attr.colorPrimary) == current
                     .getColor(R.color.accent),
                     "modal selected controls use application accent");
             dialog.dismiss();

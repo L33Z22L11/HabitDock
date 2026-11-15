@@ -256,7 +256,7 @@ final class SettingsPage extends ScrollView {
         content.addView(slider, new LinearLayout.LayoutParams(-1, Ui.dp(activity, 48)));
         slider.addOnChangeListener((view, count, user) -> update.run());
         update.run();
-        GlassFormDialog.show(activity, "推荐数量", content, () -> {
+        GlassFormDialog.showWindowBlur(activity, "推荐数量", content, () -> {
             int count = (int) slider.getValue();
             if (count != RecommendationLimit.load(activity))
                 RecommendationLimit.save(activity, count);
@@ -373,7 +373,7 @@ final class SettingsPage extends ScrollView {
         content.addView(Ui.text(activity, "小时", 14, R.color.ink));
         content.addView(minutes, new LinearLayout.LayoutParams(Ui.dp(activity, 80), Ui.dp(activity, 168)));
         content.addView(Ui.text(activity, "分钟", 14, R.color.ink));
-        GlassFormDialog.show(activity, "更新频率", content, () -> {
+        GlassFormDialog.showWindowBlur(activity, "更新频率", content, () -> {
             hours.clearFocus();
             minutes.clearFocus();
             int interval = Math.max(15, Math.min(1440, hours.getValue() * 60 + minutes.getValue()));

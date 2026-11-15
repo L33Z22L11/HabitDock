@@ -145,8 +145,13 @@ public final class WallpaperBackRunner extends Instrumentation {
             check(settings == home && !wallpaper(home), "settings shares the ordinary home window");
             check(((ThemedActivity) settings).getOnBackPressedDispatcher().hasEnabledCallbacks(),
                     "home handles back from the settings tab");
+            java.lang.reflect.Field pagesField = GlassHomeActivity.class.getDeclaredField("pages");
+            pagesField.setAccessible(true);
+            NavigationPager pager = (NavigationPager) pagesField.get(home);
+            int settingsOffset = pager.getScrollX();
             screenshot("back-native-before");
             startGesture();
+            check(pager.getScrollX() < settingsOffset, "predictive back follows the gesture towards recommendations");
             screenshot("back-native-mid");
             endGesture(false);
             check(current == settings && HomeNavigation.selected(home, 2), "edge cancellation keeps the settings tab");
@@ -154,6 +159,8 @@ public final class WallpaperBackRunner extends Instrumentation {
             startGesture();
             endGesture(true);
             check(current == home && HomeNavigation.selected(home, 0), "edge commit returns to recommendations");
+            check(!((ThemedActivity) home).getOnBackPressedDispatcher().hasEnabledCallbacks(),
+                    "recommendations leave predictive return to the system");
             HomeNavigation.select(this, home, 2);
             Activity pickerParent = current;
             for (String destination : new String[]{"open-exclusions", "open-pinned"}) {

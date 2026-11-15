@@ -23,9 +23,15 @@ final class GlassPanels {
     static void attach(View panel, float cornerDp, int source, boolean topOnly) {
         if (panel.getTag(R.id.glass_panel_material) != null)
             return;
-        panel.setBackground(new SurfaceDrawable(panel.getContext(), cornerDp, topOnly));
+        panel.setBackground(new SurfaceDrawable(panel.getContext(), cornerDp, topOnly, topOnly ? .84f : .75f));
         panel.setTag(R.id.glass_panel_material, new ObricGlass(panel, cornerDp, source, topOnly));
         panel.setClipToOutline(true);
+    }
+
+    static void attachWindowSurface(View panel, float cornerDp, boolean topOnly, boolean blurred) {
+        panel.setBackground(new SurfaceDrawable(panel.getContext(), cornerDp, topOnly, blurred ? .84f : 1f));
+        panel.setClipToOutline(true);
+        panel.setElevation(0);
     }
 
     private static final class SurfaceDrawable extends Drawable {
@@ -35,8 +41,8 @@ final class GlassPanels {
         private final Paint layerPaint = new Paint();
         private final boolean topOnly;
 
-        SurfaceDrawable(android.content.Context context, float cornerDp, boolean topOnly) {
-            fallback = new GlassFallback(context, topOnly, false, topOnly ? .84f : .75f);
+        SurfaceDrawable(android.content.Context context, float cornerDp, boolean topOnly, float opacity) {
+            fallback = new GlassFallback(context, topOnly, false, opacity);
             radius = Ui.dp(context, cornerDp);
             this.topOnly = topOnly;
         }

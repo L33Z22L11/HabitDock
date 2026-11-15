@@ -101,7 +101,7 @@ final class FloatingTitleBar extends FrameLayout {
         Mask(Context context) {
             super(context);
             wallpaper = MainStyle.load(context).hasBackground();
-            liquid = MainStyle.liquid(context);
+            liquid = MainStyle.material(context) == MainStyle.MATERIAL_GLASS;
             setBackgroundColor(Color.TRANSPARENT);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         }

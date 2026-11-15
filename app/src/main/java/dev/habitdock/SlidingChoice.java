@@ -46,8 +46,11 @@ final class SlidingChoice extends FrameLayout {
             container = MainStyle.imageMode(MainStyle.load(context).background)
                     ? Ui.imageControlSurface(context)
                     : Ui.controlSurface(context);
-            selection = androidx.core.graphics.ColorUtils.setAlphaComponent(selection, 160);
+            selection = androidx.core.graphics.ColorUtils.setAlphaComponent(selection, 216);
         }
+        // Retain the theme's container color while allowing the page to show through.
+        container = androidx.core.graphics.ColorUtils.setAlphaComponent(container,
+                Math.min(android.graphics.Color.alpha(container), 176));
         setBackground(shape(container, 14));
         setPadding(inset, inset, inset, inset);
         thumb = new View(context);

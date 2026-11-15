@@ -10,7 +10,7 @@ def hasReleaseSigning = signingValues.values().every { it != null && !it.isEmpty
 
 android {
     namespace 'dev.habitdock'
-    compileSdk 35
+    compileSdk 37
 
     defaultConfig {
         applicationId 'dev.habitdock'
@@ -65,20 +65,25 @@ tasks.configureEach {
 }
 
 dependencies {
-    // FileProvider is pinned to the version compatible with this compile SDK.
-    //noinspection GradleDependency
-    implementation 'androidx.core:core:1.16.0'
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'com.google.android.material:material:1.14.0'
 }
 
 // Static fallback previews are generated once per build; runtime pin previews stay dynamic.
-def widgetPreviewsDir = layout.buildDirectory.dir('generated/widgetPreviews/res')
-def generateWidgetPreviews = tasks.register('generateWidgetPreviews', Exec) {
-    def generator = rootProject.file('scripts/GenerateWidgetPreviews.java')
-    inputs.file(generator)
-    outputs.dir(widgetPreviewsDir)
-    commandLine "${System.getProperty('java.home')}/bin/java", '-Djava.awt.headless=true',
-            generator.absolutePath, widgetPreviewsDir.get().asFile.absolutePath
+abstract class GenerateWidgetPreviews extends Exec {
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
 }
-android.sourceSets.main.res.srcDir(widgetPreviewsDir)
-tasks.named('preBuild').configure { dependsOn(generateWidgetPreviews) }
+
+def generateWidgetPreviews = tasks.register('generateWidgetPreviews', GenerateWidgetPreviews) {
+    def generator = rootProject.file('scripts/GenerateWidgetPreviews.java')
+    outputDirectory.set(layout.buildDirectory.dir('generated/widgetPreviews/res'))
+    inputs.file(generator)
+    commandLine "${System.getProperty('java.home')}/bin/java", '-Djava.awt.headless=true',
+            generator.absolutePath, outputDirectory.get().asFile.absolutePath
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.res.addGeneratedSourceDirectory(generateWidgetPreviews) { it.outputDirectory }
+    }
+}

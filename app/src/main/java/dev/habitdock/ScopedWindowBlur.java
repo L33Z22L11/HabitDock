@@ -59,6 +59,7 @@ final class ScopedWindowBlur {
             configure(window, activity, cornerDp);
             dialog.setContentView(new View(activity));
             window.setGravity(Gravity.TOP | Gravity.LEFT);
+            window.setLayout(1, 1);
             dialog.show();
             window.setLayout(1, 1);
             return new ScopedWindowBlur(dialog, Ui.dp(activity, cornerDp));

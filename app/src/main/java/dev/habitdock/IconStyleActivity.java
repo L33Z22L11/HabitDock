@@ -83,13 +83,14 @@ public final class IconStyleActivity extends ThemedActivity {
         hero.addView(secondPreview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
         body.setBackgroundColor(Ui.pageSurface(this));
-        body.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 24));
+        body.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 24));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         LinearLayout packRow = new LinearLayout(this);
         packRow.setGravity(Gravity.CENTER_VERTICAL);
         packRow.setTag("icon-pack");
         packRow.setMinimumHeight(Ui.dp(this, 52));
         Ui.nativeTouch(packRow);
+        packRow.setPadding(Ui.dp(this, 20), 0, Ui.dp(this, 20), 0);
         packRow.addView(Ui.text(this, "图标包", Ui.FORM_TEXT_SP, R.color.ink),
                 new LinearLayout.LayoutParams(0, -2, 1));
         packIcon = new ImageView(this);
@@ -104,20 +105,23 @@ public final class IconStyleActivity extends ThemedActivity {
         packRow.addView(selectedPack, new LinearLayout.LayoutParams(0, -2, 2));
         packValue.setGravity(Gravity.END);
         packRow.setOnClickListener(v -> choosePack());
-        body.addView(packRow);
+        body.addView(packRow, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout controls = Ui.column(this);
+        controls.setPadding(Ui.dp(this, 20), 0, Ui.dp(this, 20), 0);
+        body.addView(controls, new LinearLayout.LayoutParams(-1, -2));
         filling = new SlidingChoice(this, new String[]{"关", "白色", "自适应"}, "icon-fill-", index -> {
             fill = index != 0;
             fillColor = index == 1 ? android.graphics.Color.WHITE : 0;
             changed();
         });
         filling.setTag("icon-fill-mode");
-        filling.addRow(body, "图标填充", 0);
-        Ui.space(body, 16);
+        filling.addRow(controls, "图标填充", 0);
+        Ui.space(controls, 16);
         continuous = new SlidingChoice(this, new String[]{"普通圆角", "超椭圆"}, "icon-corner-", i -> changed());
         continuous.setTag("icon-corner-mode");
         continuous.select(style.continuous ? 1 : 0, false);
-        continuous.addRow(body, "圆角模式", 0);
-        Ui.space(body, 12);
+        continuous.addRow(controls, "圆角模式", 0);
+        Ui.space(controls, 12);
         exponentControls = Ui.column(this);
         exponentValue = Ui.text(this, "", 14, R.color.ink);
         exponent = new Slider(this);
@@ -129,7 +133,7 @@ public final class IconStyleActivity extends ThemedActivity {
         exponent.setTickVisible(false);
         exponent.setValue(style.exponent / 10f);
         Ui.sliderRow(exponentControls, "超椭圆参数", exponent, exponentValue, IconStyle.defaults().exponent / 10f);
-        body.addView(exponentControls);
+        controls.addView(exponentControls);
         roundnessLabel = Ui.text(this, "", 14, R.color.ink);
         roundness = new Slider(this);
         roundness.setTag("icon-roundness");
@@ -139,10 +143,10 @@ public final class IconStyleActivity extends ThemedActivity {
         roundness.setTickVisible(false);
         roundness.setLabelBehavior(com.google.android.material.slider.LabelFormatter.LABEL_GONE);
         roundness.setValue(style.roundness);
-        Ui.sliderRow(body, "圆角比例", roundness, roundnessLabel, IconStyle.defaults().roundness);
-        Ui.space(body, 16);
+        Ui.sliderRow(controls, "圆角比例", roundness, roundnessLabel, IconStyle.defaults().roundness);
+        Ui.space(controls, 16);
         fallbackSection = Ui.column(this);
-        body.addView(fallbackSection);
+        controls.addView(fallbackSection);
         TextView fallbackHeader = Ui.text(this, "未适配图标样式", 12, R.color.muted);
         fallbackHeader.setTag("icon-fallback-heading");
         fallbackHeader.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
@@ -243,8 +247,7 @@ public final class IconStyleActivity extends ThemedActivity {
                         TextView label = Ui.text(IconStyleActivity.this, packs.get(position).label, 16, R.color.ink);
                         label.setPadding(Ui.dp(IconStyleActivity.this, 12), 0, Ui.dp(IconStyleActivity.this, 8), 0);
                         row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
-                        RadioButton radio = new com.google.android.material.radiobutton.MaterialRadioButton(
-                                IconStyleActivity.this);
+                        RadioButton radio = Ui.radio(IconStyleActivity.this);
                         radio.setChecked(position == selected);
                         radio.setClickable(false);
                         radio.setFocusable(false);

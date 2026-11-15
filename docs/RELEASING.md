@@ -51,7 +51,7 @@ git push origin v0.5.0
 ```sh
 ./gradlew assembleRelease lintRelease
 python3 scripts/release.py validate v0.5.0
-"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk
 python3 scripts/release.py package v0.5.0
 ```
 

@@ -42,17 +42,24 @@ final class DisplaySettings {
             preview.setPadding(Ui.dp(activity, 12), 0, Ui.dp(activity, 12), 0);
             preview.setTag("preview-time");
             preview.setOnClickListener(v -> activity.chooseTime());
-            ImageButton refresh = Ui.icon(activity, R.drawable.ic_refresh, "立即刷新",
-                    v -> activity.refreshRecommendations());
+            com.google.android.material.button.MaterialButton refresh = (com.google.android.material.button.MaterialButton) Ui
+                    .textButton(activity);
+            refresh.setAllCaps(false);
+            refresh.setTextSize(Ui.FORM_TEXT_SP);
+            refresh.setMinWidth(0);
+            refresh.setMinimumWidth(0);
+            refresh.setPadding(Ui.dp(activity, 12), 0, Ui.dp(activity, 12), 0);
+            refresh.setIconResource(R.drawable.ic_refresh);
+            refresh.setIconSize(Ui.dp(activity, 18));
+            refresh.setIconGravity(com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_END);
+            refresh.setIconTint(refresh.getTextColors());
+            refresh.setOnClickListener(v -> activity.refreshRecommendations());
             refresh.setTag("return-now");
             actions.addView(preview, new LinearLayout.LayoutParams(-2, Ui.dp(activity, 48)));
-            actions.addView(refresh, new LinearLayout.LayoutParams(Ui.dp(activity, 48), Ui.dp(activity, 48)));
+            actions.addView(refresh, new LinearLayout.LayoutParams(-2, Ui.dp(activity, 48)));
             time.control(actions, 48, false, null);
             content.addView(time);
-            TextView status = Ui.text(activity, "读取中", 13, R.color.muted);
-            status.setTag("recommend-time");
-            content.addView(status);
-            activity.bindDisplayStatus(status, preview, refresh);
+            activity.bindDisplayStatus(preview, refresh);
         }
         Ui.space(content, 16);
         SlidingChoice layout = new SlidingChoice(activity, new String[]{"平铺", "宫格"}, "display-layout-", index -> {
@@ -108,8 +115,13 @@ final class DisplaySettings {
             sheet.show();
             return;
         }
-        if (sheet.getWindow() != null)
+        if (sheet.getWindow() != null) {
             sheet.getWindow().setWindowAnimations(0);
+            sheet.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        }
+        View initialPanel = sheet.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+        if (initialPanel != null)
+            initialPanel.setVisibility(View.INVISIBLE);
         // The Material sheet window fills the screen. A separate, non-interactive
         // blur window follows just the sheet, so the rest of the page stays sharp.
         ScopedWindowBlur backdrop = ScopedWindowBlur.create(activity, 28);
@@ -117,8 +129,28 @@ final class DisplaySettings {
             sheet.setOnDismissListener(dialog -> backdrop.dismiss());
         sheet.setOnShowListener(dialog -> {
             View panel = sheet.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+            View scrim = sheet.findViewById(com.google.android.material.R.id.touch_outside);
+            if (scrim != null) {
+                scrim.setBackgroundColor(0x52000000);
+                scrim.setAlpha(0);
+            }
             if (panel != null) {
-                GlassPanels.attach(panel, 28, ObricGlass.WINDOW_BACKGROUND, true);
+                GlassPanels.attachWindowSurface(panel, 28, true, backdrop != null);
+                sheet.getBehavior().addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+                    @Override
+                    public void onStateChanged(View bottomSheet, int state) {
+                    }
+
+                    @Override
+                    public void onSlide(View bottomSheet, float slideOffset) {
+                        if (scrim != null) {
+                            View parent = (View) bottomSheet.getParent();
+                            int height = Math.min(bottomSheet.getHeight(), parent.getHeight());
+                            scrim.setAlpha(Math.max(0, Math.min(1,
+                                    (parent.getHeight() - bottomSheet.getTop()) / (float) Math.max(1, height))));
+                        }
+                    }
+                });
                 // Animate the panel itself so the blur follows it from the first frame.
                 panel.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                     @Override
@@ -127,14 +159,24 @@ final class DisplaySettings {
                             return true;
                         panel.getViewTreeObserver().removeOnPreDrawListener(this);
                         panel.setTranslationY(panel.getHeight());
+                        panel.setVisibility(View.VISIBLE);
                         android.animation.ValueAnimator entrance = android.animation.ValueAnimator.ofFloat(
                                 panel.getHeight(), 0);
                         entrance.setDuration(280);
                         entrance.setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f));
-                        entrance.addUpdateListener(
-                                animation -> panel.setTranslationY((float) animation.getAnimatedValue()));
-                        entrance.start();
-                        return true;
+                        entrance.addUpdateListener(animation -> {
+                            float offset = (float) animation.getAnimatedValue();
+                            panel.setTranslationY(offset);
+                            if (scrim != null)
+                                scrim.setAlpha(1 - offset / Math.max(1, panel.getHeight()));
+                        });
+                        panel.post(() -> {
+                            if (sheet.isShowing() && panel.isAttachedToWindow())
+                                entrance.start();
+                        });
+                        // Skip the layout frame so neither the panel nor its blur
+                        // can appear at the final position before the animation.
+                        return false;
                     }
                 });
                 if (backdrop != null)
@@ -169,7 +211,8 @@ final class DisplaySettings {
         };
         overlay.setFocusableInTouchMode(true);
         View scrim = new View(activity);
-        scrim.setBackgroundColor(0x33000000);
+        scrim.setBackgroundColor(0x52000000);
+        scrim.setAlpha(0);
         overlay.addView(scrim, new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(-1, -1));
         FrameLayout panel = new FrameLayout(activity);
         panel.setTag("display-sheet-panel");
@@ -197,6 +240,8 @@ final class DisplaySettings {
         behavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
             @Override
             public void onStateChanged(View bottomSheet, int state) {
+                if (state == BottomSheetBehavior.STATE_EXPANDED)
+                    scrim.setAlpha(1);
                 if (state == BottomSheetBehavior.STATE_HIDDEN) {
                     back.remove();
                     if (overlay.getParent() instanceof ViewGroup)
@@ -206,6 +251,9 @@ final class DisplaySettings {
 
             @Override
             public void onSlide(View bottomSheet, float slideOffset) {
+                int height = Math.min(bottomSheet.getHeight(), overlay.getHeight());
+                scrim.setAlpha(Math.max(0, Math.min(1,
+                        (overlay.getHeight() - bottomSheet.getTop()) / (float) Math.max(1, height))));
             }
         });
         root.addView(overlay, new ViewGroup.LayoutParams(-1, -1));

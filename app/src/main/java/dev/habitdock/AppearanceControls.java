@@ -9,14 +9,17 @@ final class AppearanceControls extends LinearLayout {
     AppearanceControls(Activity activity) {
         super(activity);
         setOrientation(VERTICAL);
+        LinearLayout controls = Ui.column(activity);
+        controls.setPadding(Ui.dp(activity, 20), 0, Ui.dp(activity, 20), 0);
+        addView(controls, new LayoutParams(-1, -2));
         SlidingChoice mode = new SlidingChoice(activity, new String[]{"系统", "浅色", "深色"},
                 "app-color-mode-", selected -> configure(activity, selected, Appearance.scheme(activity)));
         mode.select(Appearance.colorMode(activity), false);
-        mode.addRow(this, "明暗模式", 0);
+        mode.addRow(controls, "明暗模式", 0);
         SlidingChoice scheme = new SlidingChoice(activity, new String[]{"默认", "自动", "自定义"},
                 "app-scheme-", selected -> configure(activity, Appearance.colorMode(activity), selected));
         scheme.select(Appearance.scheme(activity), false);
-        scheme.addRow(this, "主题配色", 1);
+        scheme.addRow(controls, "主题配色", 1);
         if (Appearance.scheme(activity) == 2) {
             ColorSettingRow color = new ColorSettingRow(activity, "应用主色",
                     () -> IconColorDialog.show(activity, "应用主色", Appearance.seed(activity), false, false, value -> {
@@ -27,7 +30,8 @@ final class AppearanceControls extends LinearLayout {
                     }));
             color.setTag("app-style-color");
             color.bind(Appearance.seed(activity), false);
-            addView(color);
+            color.setPadding(Ui.dp(activity, 20), 0, Ui.dp(activity, 20), 0);
+            addView(color, new LayoutParams(-1, -2));
         }
 
     }

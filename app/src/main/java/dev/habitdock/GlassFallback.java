@@ -23,7 +23,7 @@ final class GlassFallback {
         }
     };
     private final Context context;
-    private final boolean topOnly, continuous, liquid;
+    private final boolean topOnly, continuous, liquid, highlight;
     private final float opacity;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -48,6 +48,7 @@ final class GlassFallback {
     GlassFallback(Context context, boolean topOnly, boolean continuous, float opacity) {
         this.context = context;
         this.liquid = MainStyle.liquid(context);
+        this.highlight = MainStyle.material(context) == MainStyle.MATERIAL_GLASS;
         this.topOnly = topOnly;
         this.continuous = continuous;
         this.opacity = Math.max(0, Math.min(1, opacity));
@@ -74,7 +75,7 @@ final class GlassFallback {
                 : ColorUtils.setAlphaComponent(Ui.color(context, R.color.surface), 255));
         shape(clip, bounds, radius, topOnly, continuous);
         canvas.drawPath(clip, fill);
-        if (!liquid)
+        if (!highlight)
             return;
         int width = Math.round(bounds.width()), height = Math.round(bounds.height());
         if (width < 1 || height < 1)

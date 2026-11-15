@@ -28,7 +28,7 @@ final class ColorSettingRow extends LinearLayout {
         value.setGravity(Gravity.END);
         addView(value, new LayoutParams(-2, -2));
         setOnClickListener(v -> action.run());
-        swatch.setOnClickListener(v -> action.run());
+        swatch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
     void bind(int color, boolean adaptive) {

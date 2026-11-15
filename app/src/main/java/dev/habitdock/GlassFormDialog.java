@@ -12,7 +12,6 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.activity.ComponentActivity;
@@ -38,9 +37,12 @@ final class GlassFormDialog {
     private final ArrayList<View> obscured = new ArrayList<>();
     private final ArrayList<Integer> accessibility = new ArrayList<>();
     private FrameLayout overlay;
+    private FrameLayout surface;
+    private View scrim;
     private OnBackPressedCallback back;
     private LifecycleEventObserver lifecycle;
     private boolean closed;
+    private boolean closing;
 
     static void show(Activity activity, String title, View content, Runnable confirm) {
         if (activity.isFinishing() || activity.isDestroyed())
@@ -50,6 +52,79 @@ final class GlassFormDialog {
         new GlassDialogBuilder(activity)
                 .setTitle(title).setView(content).setNegativeButton("取消", null)
                 .setPositiveButton("确定", (dialog, which) -> confirm.run()).show();
+    }
+
+    static void showWindowBlur(Activity activity, String title, View content, Runnable confirm) {
+        if (activity.isFinishing() || activity.isDestroyed())
+            return;
+        if (ObricGlass.available(activity)) {
+            show(activity, title, content, confirm);
+            return;
+        }
+        new GlassDialogBuilder(activity, true)
+                .setTitle(title).setView(content).setNegativeButton("取消", null)
+                .setPositiveButton("确定", (dialog, which) -> confirm.run()).show();
+    }
+
+    static void chooseWindowBlur(Context context, String title, String[] items, int selected, IntConsumer action) {
+        if (ObricGlass.available(context)) {
+            choose(context, title, items, selected, false, action);
+            return;
+        }
+        android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override
+            public int getCount() {
+                return items.length;
+            }
+
+            @Override
+            public Object getItem(int position) {
+                return items[position];
+            }
+
+            @Override
+            public long getItemId(int position) {
+                return position;
+            }
+
+            @Override
+            public View getView(int position, View recycled, ViewGroup parent) {
+                return choiceRow(context, items[position], position == selected);
+            }
+        };
+        new GlassDialogBuilder(context, true).setTitle(title)
+                .setAdapter(adapter, (dialog, which) -> {
+                    action.accept(which);
+                    dialog.dismiss();
+                }).show();
+    }
+
+    static LinearLayout choiceRow(Context context, String label, boolean checked) {
+        LinearLayout row = new LinearLayout(context);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(context, 24), 0, Ui.dp(context, 24), 0);
+        row.setMinimumHeight(Ui.dp(context, 56));
+        row.setContentDescription(label);
+        row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override
+            public void onInitializeAccessibilityNodeInfo(View host,
+                    android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.setClassName("android.widget.RadioButton");
+                info.setCheckable(true);
+                info.setChecked(checked);
+            }
+        });
+        RadioButton radio = Ui.radio(context);
+        radio.setText(label);
+        radio.setTextSize(Ui.FORM_TEXT_SP);
+        radio.setTextColor(Ui.color(context, R.color.ink));
+        radio.setChecked(checked);
+        radio.setClickable(false);
+        radio.setFocusable(false);
+        radio.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(radio, new LinearLayout.LayoutParams(-1, -2));
+        return row;
     }
 
     /**
@@ -76,18 +151,16 @@ final class GlassFormDialog {
 
     private static boolean chooseNative(Context context, String title, String[] items, int selected,
             boolean cancelButton, IntConsumer action) {
-        LinearLayout content = selected >= 0 ? new RadioGroup(context) : Ui.column(context);
+        LinearLayout content = Ui.column(context);
+        if (!cancelButton)
+            content.setPadding(0, 0, 0, Ui.dp(context, 16));
         ArrayList<View> rows = new ArrayList<>();
         for (int i = 0; i < items.length; i++) {
             View row;
             if (selected >= 0) {
-                RadioButton radio = new RadioButton(context);
-                radio.setText(items[i]);
-                radio.setChecked(i == selected);
-                radio.setTextSize(16);
-                radio.setTextColor(Ui.color(context, R.color.ink));
-                radio.setPadding(Ui.dp(context, 24), 0, Ui.dp(context, 24), 0);
-                row = radio;
+                row = choiceRow(context, items[i], i == selected);
+                Ui.nativeTouch(row);
+                row.setPadding(Ui.dp(context, 24), 0, Ui.dp(context, 24), 0);
             } else {
                 Button button = Ui.textButton(context);
                 button.setText(items[i]);
@@ -166,7 +239,7 @@ final class GlassFormDialog {
                     host.showNative(title, negative, positive, confirm);
                     return true;
                 } catch (RuntimeException error) {
-                    host.close();
+                    host.closeImmediately();
                     if (content.getParent() instanceof ViewGroup)
                         ((ViewGroup) content.getParent()).removeView(content);
                     android.util.Log.w("GlassFormDialog", "Unable to show same-window form", error);
@@ -204,6 +277,10 @@ final class GlassFormDialog {
         overlay.setFocusableInTouchMode(true);
         overlay.setOnClickListener(v -> close());
         overlay.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        scrim = new View(activity);
+        scrim.setBackgroundColor(0x52000000);
+        scrim.setAlpha(0);
+        overlay.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
         ViewCompat.setOnApplyWindowInsetsListener(overlay, (view, insets) -> {
             androidx.core.graphics.Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
                     | WindowInsetsCompat.Type.displayCutout());
@@ -214,7 +291,7 @@ final class GlassFormDialog {
         if (android.os.Build.VERSION.SDK_INT >= 28)
             overlay.setAccessibilityPaneTitle(title);
 
-        FrameLayout surface = new FrameLayout(activity);
+        surface = new FrameLayout(activity);
         GlassPanels.attach(surface, 28, ObricGlass.VIEW_BACKGROUND);
         surface.setClickable(true); // Empty space inside the form is not an outside click.
         ScrollView scroll = new ScrollView(activity);
@@ -277,11 +354,17 @@ final class GlassFormDialog {
         activity.getOnBackPressedDispatcher().addCallback(activity, back);
         lifecycle = (source, event) -> {
             if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_DESTROY)
-                close();
+                closeImmediately();
         };
         activity.getLifecycle().addObserver(lifecycle);
         ViewCompat.requestApplyInsets(overlay);
         overlay.requestFocus();
+        surface.setAlpha(0);
+        surface.setScaleX(.96f);
+        surface.setScaleY(.96f);
+        scrim.animate().alpha(1).setDuration(220).start();
+        surface.animate().alpha(1).scaleX(1).scaleY(1).setDuration(220)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
     }
 
     private void back() {
@@ -296,9 +379,30 @@ final class GlassFormDialog {
     }
 
     private void close() {
+        if (closed || closing)
+            return;
+        if (overlay == null || !overlay.isAttachedToWindow() || surface == null) {
+            closeImmediately();
+            return;
+        }
+        closing = true;
+        if (back != null)
+            back.setEnabled(false);
+        scrim.animate().cancel();
+        surface.animate().cancel();
+        scrim.animate().alpha(0).setDuration(160).start();
+        surface.animate().alpha(0).scaleX(.96f).scaleY(.96f).setDuration(160)
+                .withEndAction(this::closeImmediately).start();
+    }
+
+    private void closeImmediately() {
         if (closed)
             return;
         closed = true;
+        if (scrim != null)
+            scrim.animate().cancel();
+        if (surface != null)
+            surface.animate().setListener(null).withEndAction(null).cancel();
         if (back != null)
             back.remove();
         if (lifecycle != null)

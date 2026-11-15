@@ -40,6 +40,8 @@ public final class GlassHomeActivity extends ThemedActivity {
     private NavigationPager pages;
     private View[] tabs;
     private GlassNavigation navigation;
+    private FrameLayout navigationAnchor;
+    private NavigationWindow navigationWindow;
     private RecommendationList recommendations;
     private GlassCatalog catalog;
     private SettingsPage settings;
@@ -49,13 +51,16 @@ public final class GlassHomeActivity extends ThemedActivity {
     private Repository.Snapshot snapshot;
     private AnchoredGlassPopup menu;
     private int selected, request;
+    private androidx.activity.OnBackPressedCallback tabBack;
+    private boolean backGesture;
+    private int backTab;
+    private float backStart;
     private Bundle restored;
     private String pendingPackage;
     private long previewTime, updateTime;
     private String loadStatus = "读取中";
-    private WeakReference<TextView> displayStatus = new WeakReference<>(null);
     private WeakReference<Button> displayPreview = new WeakReference<>(null);
-    private WeakReference<ImageButton> displayRefresh = new WeakReference<>(null);
+    private WeakReference<com.google.android.material.button.MaterialButton> displayRefresh = new WeakReference<>(null);
     private final androidx.activity.result.ActivityResultLauncher<Intent> homeRequest = registerForActivityResult(
             new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(), result -> {
                 if (android.os.Build.VERSION.SDK_INT < 29)
@@ -78,6 +83,41 @@ public final class GlassHomeActivity extends ThemedActivity {
         super.onCreate(state);
         restored = state;
         selected = entryTab(getIntent(), state, Repository.prefs(this).getInt("main.start_tab", 0));
+        tabBack = new androidx.activity.OnBackPressedCallback(selected != 0) {
+            @Override
+            public void handleOnBackStarted(androidx.activity.BackEventCompat event) {
+                backGesture = true;
+                backTab = selected;
+                backStart = pages.prepareNavigation();
+                navigation.beginPageDrag();
+            }
+
+            @Override
+            public void handleOnBackProgressed(androidx.activity.BackEventCompat event) {
+                if (backGesture)
+                    pages.dragNavigationTo(backStart * (1 - event.getProgress()));
+            }
+
+            @Override
+            public void handleOnBackCancelled() {
+                if (!backGesture)
+                    return;
+                if (pages.isFakeDragging())
+                    pages.endFakeDrag();
+                navigation.select(backTab, true);
+                backGesture = false;
+                setEnabled(selected != 0);
+            }
+
+            @Override
+            public void handleOnBackPressed() {
+                if (pages.isFakeDragging())
+                    pages.endFakeDrag();
+                navigation.select(0, true);
+                backGesture = false;
+                setEnabled(selected != 0);
+            }
+        };
         pendingPackage = state == null
                 ? getIntent().getStringExtra(APP_ACTIONS)
                 : state.getString("glass.pending", getIntent().getStringExtra(APP_ACTIONS));
@@ -163,13 +203,16 @@ public final class GlassHomeActivity extends ThemedActivity {
             }
         });
         navigation = new GlassNavigation(this, this::showTab);
+        navigationAnchor = new FrameLayout(this);
+        navigationAnchor.addView(navigation, new FrameLayout.LayoutParams(-1, -1));
+        navigationWindow = new NavigationWindow(this, navigationAnchor, navigation);
         FrameLayout.LayoutParams nav = new FrameLayout.LayoutParams(
                 landscape ? Ui.dp(this, 64) : -1, landscape ? -1 : Ui.dp(this, 60),
                 landscape ? Gravity.START | Gravity.CENTER_VERTICAL : Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         nav.leftMargin = nav.rightMargin = Ui.dp(this, landscape ? 8 : 12);
         nav.topMargin = Ui.dp(this, 4);
         nav.bottomMargin = Ui.dp(this, 4);
-        stage.addView(navigation, nav);
+        stage.addView(navigationAnchor, nav);
         stage.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int length = landscape
                     ? Math.min(Ui.dp(this, 216), b - t - Ui.dp(this, 8))
@@ -179,7 +222,7 @@ public final class GlassHomeActivity extends ThemedActivity {
                     nav.height = length;
                 else
                     nav.width = length;
-                navigation.setLayoutParams(nav);
+                navigationAnchor.setLayoutParams(nav);
             }
         });
         pages.addOnPageChangeListener(new androidx.viewpager.widget.ViewPager.SimpleOnPageChangeListener() {
@@ -198,6 +241,8 @@ public final class GlassHomeActivity extends ThemedActivity {
             @Override
             public void onPageSelected(int position) {
                 selected = position;
+                if (!backGesture)
+                    tabBack.setEnabled(position != 0);
                 navigation.markSelected(position);
                 tabActivated();
             }
@@ -215,21 +260,11 @@ public final class GlassHomeActivity extends ThemedActivity {
             androidx.core.graphics.Insets ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime());
             v.setPadding(bars.left, 0, bars.right, Math.max(bars.bottom, ime.bottom));
             updateTitleInsets(bars.top);
-            navigation.setVisibility(
+            navigationAnchor.setVisibility(
                     insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) ? View.GONE : View.VISIBLE);
             return insets;
         });
-        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
-            public void handleOnBackPressed() {
-                if (selected != 0) {
-                    navigation.select(0, true);
-                } else {
-                    setEnabled(false);
-                    getOnBackPressedDispatcher().onBackPressed();
-                    setEnabled(true);
-                }
-            }
-        });
+        getOnBackPressedDispatcher().addCallback(this, tabBack);
         pages.setCurrentItem(selected, false);
         navigation.select(selected, false);
         tabActivated();
@@ -346,9 +381,9 @@ public final class GlassHomeActivity extends ThemedActivity {
     static int entryTab(Intent intent, Bundle state, int preference) {
         if (state != null)
             return Math.max(0, Math.min(2, state.getInt("glass.tab", 0)));
-        if (intent.hasCategory(Intent.CATEGORY_HOME) || intent.hasExtra(APP_ACTIONS))
+        if (intent.hasExtra(APP_ACTIONS))
             return 0;
-        return preference == 2 ? 2 : 0;
+        return preference == 1 ? 1 : 0;
     }
 
     @Override
@@ -366,6 +401,7 @@ public final class GlassHomeActivity extends ThemedActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        navigationWindow.resume();
         ApkShare.cleanupAsync(this);
         settings.setDefaultHome(isDefaultHome());
         load(false);
@@ -448,8 +484,7 @@ public final class GlassHomeActivity extends ThemedActivity {
         });
     }
 
-    void bindDisplayStatus(TextView status, Button preview, ImageButton refresh) {
-        displayStatus = new WeakReference<>(status);
+    void bindDisplayStatus(Button preview, com.google.android.material.button.MaterialButton refresh) {
         displayPreview = new WeakReference<>(preview);
         displayRefresh = new WeakReference<>(refresh);
         updateDisplayStatus();
@@ -469,21 +504,19 @@ public final class GlassHomeActivity extends ThemedActivity {
                 previewIndicator.setContentDescription(label + "，点按回到实时并刷新");
             }
         }
-        TextView status = displayStatus.get();
-        if (status != null) {
-            String text = updateTime == 0 ? "暂无更新时间" : "更新时间 " + formatTime(updateTime, false);
-            if (!loadStatus.isEmpty())
-                text += "  " + loadStatus;
-            status.setText(text);
-        }
         Button preview = displayPreview.get();
         if (preview != null) {
             preview.setText(previewTime == 0 ? "选择时间" : formatTime(previewTime, true));
             preview.setContentDescription("预览其他时间");
         }
-        ImageButton refresh = displayRefresh.get();
+        com.google.android.material.button.MaterialButton refresh = displayRefresh.get();
         if (refresh != null) {
             String label = previewTime == 0 ? "立即刷新" : "回到实时并刷新";
+            refresh.setText(updateTime == 0 ? "—" : formatTime(updateTime, false));
+            String updated = updateTime == 0 ? "暂无更新时间" : "更新时间 " + formatTime(updateTime, false);
+            if (!loadStatus.isEmpty())
+                updated += "，" + loadStatus;
+            label = updated + "，" + label;
             refresh.setContentDescription(label);
             refresh.setTooltipText(label);
         }
@@ -532,6 +565,7 @@ public final class GlassHomeActivity extends ThemedActivity {
     protected void onPause() {
         if (menu != null)
             menu.dismiss();
+        navigationWindow.pause();
         super.onPause();
     }
 

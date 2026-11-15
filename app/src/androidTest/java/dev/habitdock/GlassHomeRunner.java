@@ -35,6 +35,15 @@ public final class GlassHomeRunner extends Instrumentation {
                         config.orientation = orientation;
                         Context context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config),
                                 true);
+                        LinearLayout choice = GlassFormDialog.choiceRow(context, "全部应用", true);
+                        layout(choice, Ui.dp(context, 320), Ui.dp(context, 56));
+                        check(choice.getChildAt(0).getLeft() >= Ui.dp(context, 24)
+                                && choice.getWidth() - choice.getChildAt(0).getRight() >= Ui.dp(context, 24),
+                                "choice radio stays inset from both panel edges");
+                        android.widget.RadioButton choiceRadio = (android.widget.RadioButton) choice.getChildAt(0);
+                        check(choiceRadio.getButtonTintList().getColorForState(
+                                new int[]{android.R.attr.state_checked}, 0) == Ui.color(context, R.color.accent),
+                                "selected choice uses the theme accent");
                         checkAdaptiveIconDensity();
                         Configuration normalText = new Configuration(config);
                         normalText.fontScale = 1f;
@@ -632,13 +641,13 @@ public final class GlassHomeRunner extends Instrumentation {
                 && "habitdock://app-actions/42/example.app".equals(actions.getDataString())
                 && "example.app".equals(actions.getStringExtra(GlassHomeActivity.APP_ACTIONS)),
                 "widget and app-action intents retain their identity and payload");
-        for (android.content.Intent entry : new android.content.Intent[]{icon, widget, oldWidget}) {
+        for (android.content.Intent entry : new android.content.Intent[]{icon, widget, oldWidget, home}) {
             check(GlassHomeActivity.entryTab(entry, null, 0) == 0, "entry defaults to recommendations");
-            check(GlassHomeActivity.entryTab(entry, null, 2) == 2, "entry honors settings preference");
-            check(GlassHomeActivity.entryTab(entry, null, 1) == 0, "unknown preference defaults to recommendations");
+            check(GlassHomeActivity.entryTab(entry, null, 1) == 1, "entry honors all apps preference");
+            check(GlassHomeActivity.entryTab(entry, null, 2) == 0,
+                    "old settings preference falls back to recommendations");
         }
-        check(GlassHomeActivity.entryTab(home, null, 2) == 0, "system home prioritizes recommendations");
-        check(GlassHomeActivity.entryTab(actions, null, 2) == 0, "app actions prioritize recommendations");
+        check(GlassHomeActivity.entryTab(actions, null, 1) == 0, "app actions prioritize recommendations");
         Bundle state = new Bundle();
         for (int saved = 0; saved <= 2; saved++) {
             state.putInt("glass.tab", saved);
@@ -646,7 +655,7 @@ public final class GlassHomeRunner extends Instrumentation {
                 check(GlassHomeActivity.entryTab(entry, state, 2) == saved,
                         "saved tab takes precedence when the activity is restored");
         }
-        check(GlassHomeActivity.entryTab(widget, null, 2) == 2
+        check(GlassHomeActivity.entryTab(widget, null, 1) == 1
                 && GlassHomeActivity.entryTab(widget, null, 0) == 0,
                 "a subsequent entry uses the current preference");
     }
@@ -768,7 +777,7 @@ public final class GlassHomeRunner extends Instrumentation {
 
     private Context isolatedMaterialContext(Context base, boolean liquid) {
         android.content.SharedPreferences preferences = getContext().getSharedPreferences("material-check", 0);
-        preferences.edit().putBoolean("main.liquid", liquid).commit();
+        preferences.edit().remove("main.material").putBoolean("main.liquid", liquid).commit();
         Context isolated = new android.content.ContextWrapper(base) {
             @Override
             public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
@@ -802,6 +811,10 @@ public final class GlassHomeRunner extends Instrumentation {
             image.recycle();
             context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config), true);
             check(MainStyle.liquid(context), "material switch reads its saved enabled state");
+            check(MainStyle.material(context) == MainStyle.MATERIAL_GLASS, "old enabled preference keeps glass");
+            Repository.prefs(context).edit().putInt("main.material", MainStyle.MATERIAL_SYSTEM).commit();
+            check(MainStyle.liquid(context) && !ObricGlass.available(context),
+                    "system material keeps translucency without requesting vendor glass");
         }
     }
 
@@ -810,6 +823,14 @@ public final class GlassHomeRunner extends Instrumentation {
             Configuration config = new Configuration(getTargetContext().getResources().getConfiguration());
             config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
             Context context = isolatedMaterialContext(getTargetContext().createConfigurationContext(config), true);
+            LinearLayout controls = Ui.column(context);
+            com.google.android.material.materialswitch.MaterialSwitch toggle = Ui.switchRow(controls, "开关", "test");
+            android.content.res.ColorStateList switchTrack = toggle.getTrackTintList();
+            for (int[] state : new int[][]{{android.R.attr.state_enabled},
+                    {android.R.attr.state_enabled, android.R.attr.state_checked}}) {
+                int alpha = android.graphics.Color.alpha(switchTrack.getColorForState(state, 0));
+                check(alpha > 0 && alpha < 255, "switch track stays translucent when checked or unchecked");
+            }
             android.content.SharedPreferences preferences = Repository.prefs(context);
             boolean hadBackground = preferences.contains("main.background");
             int originalBackground = preferences.getInt("main.background", 0);
@@ -826,7 +847,8 @@ public final class GlassHomeRunner extends Instrumentation {
                             });
                     int track = ((android.graphics.drawable.GradientDrawable) choice.getBackground()).getColor()
                             .getDefaultColor();
-                    check(track == token, "image background segment track uses the existing container token");
+                    check(track == androidx.core.graphics.ColorUtils.setAlphaComponent(token, 176),
+                            "image background segment track uses a translucent container token");
                     int selection = ((android.graphics.drawable.GradientDrawable) choice.getChildAt(0).getBackground())
                             .getColor().getDefaultColor();
                     int expectedSelection = com.google.android.material.color.MaterialColors.getColor(context,
@@ -834,8 +856,8 @@ public final class GlassHomeRunner extends Instrumentation {
                                     ? com.google.android.material.R.attr.colorSurfaceContainerHighest
                                     : com.google.android.material.R.attr.colorSurfaceContainerLowest,
                             Ui.color(context, R.color.surface));
-                    check(selection == androidx.core.graphics.ColorUtils.setAlphaComponent(expectedSelection, 160),
-                            "image background keeps the existing segment highlight");
+                    check(selection == androidx.core.graphics.ColorUtils.setAlphaComponent(expectedSelection, 216),
+                            "image background keeps a more opaque segment highlight");
                     GlassCatalog catalog = new GlassCatalog(context, (app, anchor) -> {
                     });
                     View bubble = catalog.findViewWithTag("catalog-index-bubble");

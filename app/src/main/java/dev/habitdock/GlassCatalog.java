@@ -105,8 +105,8 @@ final class GlassCatalog extends LinearLayout {
         clear.setTag("catalog-clear");
         searchBar.addView(clear, new LayoutParams(Ui.dp(context, 40), Ui.dp(context, 48)));
         filter = Ui.icon(context, R.drawable.ic_filter, "筛选应用类型",
-                v -> GlassFormDialog.choose(context, "应用类型", new String[]{"全部应用", "非系统应用", "系统应用"},
-                        appType, false, which -> {
+                v -> GlassFormDialog.chooseWindowBlur(context, "应用类型", new String[]{"全部应用", "非系统应用", "系统应用"},
+                        appType, which -> {
                             appType = which;
                             filter();
                         }));

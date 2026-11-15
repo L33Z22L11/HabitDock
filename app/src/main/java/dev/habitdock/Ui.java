@@ -15,7 +15,7 @@ final class Ui {
     static final int FORM_TEXT_SP = 16;
     static int color(Context c, int resource) {
         int attr = resource == R.color.accent
-                ? com.google.android.material.R.attr.colorPrimary
+                ? androidx.appcompat.R.attr.colorPrimary
                 : resource == R.color.page
                         ? com.google.android.material.R.attr.colorSurface
                         : resource == R.color.surface
@@ -44,6 +44,27 @@ final class Ui {
             String tag) {
         com.google.android.material.materialswitch.MaterialSwitch control = new com.google.android.material.materialswitch.MaterialSwitch(
                 body.getContext());
+        ColorStateList track = control.getTrackTintList();
+        if (track != null) {
+            int[][] states = {{-android.R.attr.state_enabled, -android.R.attr.state_checked},
+                    {-android.R.attr.state_enabled, android.R.attr.state_checked},
+                    {android.R.attr.state_checked}, {android.R.attr.state_hovered},
+                    {android.R.attr.state_focused}, {android.R.attr.state_pressed}, {}};
+            int[][] lookup = {{}, {android.R.attr.state_checked},
+                    {android.R.attr.state_enabled, android.R.attr.state_checked},
+                    {android.R.attr.state_enabled, android.R.attr.state_hovered},
+                    {android.R.attr.state_enabled, android.R.attr.state_focused},
+                    {android.R.attr.state_enabled, android.R.attr.state_pressed}, {android.R.attr.state_enabled}};
+            int[] colors = new int[states.length];
+            for (int i = 0; i < states.length; i++) {
+                int color = track.getColorForState(lookup[i], track.getDefaultColor());
+                colors[i] = i < 2
+                        ? color
+                        : androidx.core.graphics.ColorUtils.setAlphaComponent(color,
+                                Math.min(android.graphics.Color.alpha(color), 176));
+            }
+            control.setTrackTintList(new ColorStateList(states, colors));
+        }
         control.setTag(tag);
         control.setContentDescription(title);
         FormRow row = new FormRow(body.getContext(), title);
@@ -151,7 +172,16 @@ final class Ui {
 
     static Button textButton(Context c) {
         return new com.google.android.material.button.MaterialButton(c, null,
-                com.google.android.material.R.attr.borderlessButtonStyle);
+                androidx.appcompat.R.attr.borderlessButtonStyle);
+    }
+
+    static com.google.android.material.radiobutton.MaterialRadioButton radio(Context context) {
+        com.google.android.material.radiobutton.MaterialRadioButton button = new com.google.android.material.radiobutton.MaterialRadioButton(
+                context);
+        button.setButtonTintList(new ColorStateList(
+                new int[][]{{android.R.attr.state_checked}, {}},
+                new int[]{color(context, R.color.accent), color(context, R.color.muted)}));
+        return button;
     }
 
     static int dp(Context c, float value) {

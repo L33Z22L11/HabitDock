@@ -1,6 +1,6 @@
 # 开发说明
 
-使用 JDK 17、Gradle Wrapper、Android SDK 35 / Build Tools 35.0.0，不依赖全局 Gradle，也不需要修改 shell 启动文件。
+使用 JDK 17、Gradle Wrapper、Android SDK 37 / Build Tools 36.0.0，不依赖全局 Gradle，也不需要修改 shell 启动文件。
 
 Debug 包名为 `dev.habitdock.debug`，显示名为「知时 HabitDock Debug」，可与 `dev.habitdock` 正式版共存。两者的数据、权限和桌面组件分别管理。
 

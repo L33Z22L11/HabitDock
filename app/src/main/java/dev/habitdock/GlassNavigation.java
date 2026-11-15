@@ -144,9 +144,6 @@ final class GlassNavigation extends LinearLayout {
         boolean dark = GlassFallback.dark(getContext());
         if (!glass.active()) {
             fallback.draw(canvas, bounds, radius);
-        } else {
-            paint.setColor(GlassFallback.tint(getContext(), 40));
-            canvas.drawRoundRect(bounds, radius, radius, paint);
         }
         int first = Math.max(0, Math.min(2, (int) Math.floor(position)));
         int next = Math.min(2, first + 1);

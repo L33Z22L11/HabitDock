@@ -4,7 +4,6 @@ import android.content.*;
 import android.os.Bundle;
 import android.view.*;
 import android.widget.*;
-import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import java.util.*;
 
@@ -16,11 +15,10 @@ public final class MainStyleActivity extends ThemedActivity {
     }
 
     private MainStyle original, style;
-    private boolean originalLiquid;
-    private int originalStartTab;
+    private int originalMaterial, originalStartTab;
     private int originalSeed, originalColorMode, originalScheme;
     private Button restore;
-    private SlidingChoice backgroundMode, startPage;
+    private SlidingChoice backgroundMode, startPage, material;
     private String originalWallpaperImage, originalCustomImage;
     private Button imageAction, transparencyAction, blurAction;
     private AnchoredGlassPopup adjustment;
@@ -32,7 +30,6 @@ public final class MainStyleActivity extends ThemedActivity {
 
     private LinearLayout transparencyControls;
     private TextView blurStatus;
-    private MaterialSwitch liquid;
     private LinearLayout preview;
     private Repository.Snapshot sample;
     private boolean binding;
@@ -41,7 +38,12 @@ public final class MainStyleActivity extends ThemedActivity {
     public void onCreate(Bundle state) {
         super.onCreate(state);
         style = MainStyle.load(this);
-        originalLiquid = state == null ? MainStyle.liquid(this) : state.getBoolean("original-liquid", true);
+        originalMaterial = state == null
+                ? MainStyle.material(this)
+                : state.getInt("original-material",
+                        state.getBoolean("original-liquid", true)
+                                ? MainStyle.MATERIAL_GLASS
+                                : MainStyle.MATERIAL_OPAQUE);
         originalStartTab = state == null ? MainStyle.startTab(this) : state.getInt("original-start-tab", 0);
         originalColorMode = state == null ? Appearance.colorMode(this) : state.getInt("original-color-mode");
         originalScheme = state == null ? Appearance.scheme(this) : state.getInt("original-scheme", 1);
@@ -63,8 +65,8 @@ public final class MainStyleActivity extends ThemedActivity {
         bar.setBackgroundColor(Ui.pageSurface(this));
         restore = StyleRestore.button(this, () -> StyleRestore.show(this, "重置主界面样式",
                 () -> restoreStyle(original, originalColorMode, originalScheme, originalSeed, originalWallpaperImage,
-                        originalCustomImage, originalLiquid, originalStartTab),
-                () -> restoreStyle(MainStyle.defaults(), 0, 1, 0xff246e5c, "", "", true, 0)));
+                        originalCustomImage, originalMaterial, originalStartTab),
+                () -> restoreStyle(MainStyle.defaults(), 0, 1, 0xff246e5c, "", "", MainStyle.MATERIAL_GLASS, 0)));
         restore.setTag("main-style-reset");
         bar.addView(restore);
         ScrollView scroll = new ScrollView(this);
@@ -81,26 +83,30 @@ public final class MainStyleActivity extends ThemedActivity {
         preview.setPadding(Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16));
         content.addView(preview, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout body = Ui.column(this);
-        body.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 20), Ui.dp(this, 24));
+        body.setPadding(0, Ui.dp(this, 20), 0, Ui.dp(this, 24));
         body.setBackgroundColor(Ui.pageSurface(this));
         content.addView(body, new LinearLayout.LayoutParams(-1, -2, 1));
         body.addView(new AppearanceControls(this), new LinearLayout.LayoutParams(-1, -2));
-        startPage = new SlidingChoice(this, new String[]{"推荐", "设置"}, "main-start-page-", selected -> {
+        LinearLayout controls = Ui.column(this);
+        controls.setPadding(Ui.dp(this, 20), 0, Ui.dp(this, 20), 0);
+        body.addView(controls, new LinearLayout.LayoutParams(-1, -2));
+        startPage = new SlidingChoice(this, new String[]{"推荐", "全部"}, "main-start-page-", selected -> {
             if (binding)
                 return;
-            Repository.prefs(this).edit().putInt("main.start_tab", selected == 0 ? 0 : 2).apply();
+            Repository.prefs(this).edit().putInt("main.start_tab", selected).apply();
             bind(style);
         });
         startPage.setTag("main-start-page");
-        startPage.addRow(body, "默认打开", 0);
-        liquid = Ui.switchRow(body, "液态材质", "main-liquid");
-        liquid.setOnCheckedChangeListener((button, checked) -> {
+        startPage.addRow(controls, "默认打开", 0);
+        material = new SlidingChoice(this, new String[]{"不透明", "系统模糊", "液态玻璃"}, "main-material-", selected -> {
             if (binding)
                 return;
-            Repository.prefs(this).edit().putBoolean("main.liquid", checked).apply();
+            Repository.prefs(this).edit().putInt("main.material", selected).apply();
             bind(style);
             recreateForAppearance();
         });
+        material.setTag("main-material");
+        material.addRow(controls, "界面材质", MainStyle.MATERIAL_GLASS);
         backgroundMode = new SlidingChoice(this, new String[]{"关", "原生", "兼容", "自定义"}, "background-mode-",
                 index -> {
                     if (binding)
@@ -115,9 +121,9 @@ public final class MainStyleActivity extends ThemedActivity {
                 });
         backgroundMode.setTag("background-mode");
         backgroundMode.setContentDescription("壁纸背景");
-        backgroundMode.addRow(body, "壁纸背景", 0);
+        backgroundMode.addRow(controls, "壁纸背景", 0);
         transparencyControls = Ui.column(this);
-        body.addView(transparencyControls);
+        controls.addView(transparencyControls);
         Ui.space(transparencyControls, 8);
         LinearLayout actions = new LinearLayout(this);
         actions.setTag("background-actions");
@@ -266,10 +272,10 @@ public final class MainStyleActivity extends ThemedActivity {
     }
 
     private void restoreStyle(MainStyle value, int mode, int scheme, int seed, String wallpaperImage,
-            String customImage, boolean liquidEnabled, int startTab) {
+            String customImage, int materialMode, int startTab) {
         BackgroundImages.select(this, MainStyle.IMAGE, wallpaperImage);
         BackgroundImages.select(this, MainStyle.CUSTOM_IMAGE, customImage);
-        Repository.prefs(this).edit().putBoolean("main.liquid", liquidEnabled).putInt("main.start_tab", startTab)
+        Repository.prefs(this).edit().putInt("main.material", materialMode).putInt("main.start_tab", startTab)
                 .apply();
         bind(value);
         boolean seedChanged = seed != Appearance.seed(this);
@@ -313,10 +319,10 @@ public final class MainStyleActivity extends ThemedActivity {
         imageStatus.setVisibility(importing || (MainStyle.imageMode(value.background) && !BackgroundImages.exists(this))
                 ? View.VISIBLE
                 : View.GONE);
-        liquid.setChecked(MainStyle.liquid(this));
-        startPage.select(MainStyle.startTab(this) == 2 ? 1 : 0, true);
+        material.select(MainStyle.material(this), true);
+        startPage.select(MainStyle.startTab(this), true);
         StyleRestore.update(restore,
-                !value.sameAs(original) || MainStyle.liquid(this) != originalLiquid
+                !value.sameAs(original) || MainStyle.material(this) != originalMaterial
                         || MainStyle.startTab(this) != originalStartTab
                         || Appearance.colorMode(this) != originalColorMode
                         || Appearance.scheme(this) != originalScheme
@@ -414,6 +420,17 @@ public final class MainStyleActivity extends ThemedActivity {
     private void renderPreview() {
         preview.removeAllViews();
         preview.setBackgroundColor(style.hasBackground() ? style.wallpaperVeil(this) : style.page(this));
+        FrameLayout scene = new FrameLayout(this);
+        scene.setMinimumHeight(Ui.dp(this, 180));
+        preview.addView(scene, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout examplesView = Ui.column(this);
+        scene.addView(examplesView, new FrameLayout.LayoutParams(-1, -2));
+        MaterialSample materialSample = new MaterialSample(this);
+        materialSample.setTag("material-preview");
+        FrameLayout.LayoutParams sampleBounds = new FrameLayout.LayoutParams(Ui.dp(this, 144), Ui.dp(this, 68),
+                Gravity.END | Gravity.CENTER_VERTICAL);
+        sampleBounds.setMarginEnd(Ui.dp(this, 12));
+        scene.addView(materialSample, sampleBounds);
         if (sample == null) {
             preview.setMinimumHeight(Ui.dp(this, 212));
             return;
@@ -449,8 +466,8 @@ public final class MainStyleActivity extends ThemedActivity {
                     cell.setMarginEnd(Ui.dp(this, 4));
                 row.addView(tile, cell);
             }
-            preview.addView(row, new LinearLayout.LayoutParams(-1, Ui.dp(this, style.rowDp(this))));
-            Ui.space(preview, 4);
+            examplesView.addView(row, new LinearLayout.LayoutParams(-1, Ui.dp(this, style.rowDp(this))));
+            Ui.space(examplesView, 4);
         }
     }
 
@@ -461,7 +478,7 @@ public final class MainStyleActivity extends ThemedActivity {
         state.putInt("original-color-mode", originalColorMode);
         state.putInt("original-scheme", originalScheme);
         state.putInt("original-seed", originalSeed);
-        state.putBoolean("original-liquid", originalLiquid);
+        state.putInt("original-material", originalMaterial);
         state.putInt("original-start-tab", originalStartTab);
         state.putIntArray("original", new int[]{original.iconDp, original.labelSp, original.background,
                 original.reasons, original.showHidden ? 1 : 0, original.transparency, original.blur});

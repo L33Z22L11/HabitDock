@@ -18,7 +18,7 @@ public abstract class ThemedActivity extends AppCompatActivity {
             key) -> {
         if (key == null || key.startsWith("appearance.") || key.startsWith("background.")
                 || key.equals("main.background") || key.equals("main.transparency") || key.equals("main.blur")
-                || key.equals("main.liquid")) {
+                || key.equals("main.liquid") || key.equals("main.material")) {
             appearanceHandler.removeCallbacks(refreshAppearance);
             appearanceHandler.post(refreshAppearance);
         }
@@ -85,7 +85,7 @@ public abstract class ThemedActivity extends AppCompatActivity {
     }
 
     private String visualKey() {
-        return Appearance.key(this) + ":" + MainStyle.load(this).background + ":" + MainStyle.liquid(this);
+        return Appearance.key(this) + ":" + MainStyle.load(this).background + ":" + MainStyle.material(this);
     }
 
     final void prepareReturnPreview() {

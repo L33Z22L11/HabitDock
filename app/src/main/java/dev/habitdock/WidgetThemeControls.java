@@ -27,18 +27,22 @@ final class WidgetThemeControls extends LinearLayout {
         this.activity = activity;
         this.changed = changed;
         setOrientation(VERTICAL);
-        setPadding(Ui.dp(activity, 16), Ui.dp(activity, 20), Ui.dp(activity, 16), Ui.dp(activity, 12));
+        setPadding(0, Ui.dp(activity, 20), 0, Ui.dp(activity, 12));
         setBackground(Ui.card(activity, 24));
+        setClipToOutline(true);
+        LinearLayout top = Ui.column(activity);
+        top.setPadding(Ui.dp(activity, 16), 0, Ui.dp(activity, 16), 0);
+        addView(top, new LayoutParams(-1, -2));
         TextView title = Ui.text(activity, "主题", 16, R.color.ink);
         Ui.title(title);
-        addView(title);
-        Ui.space(this, 16);
+        top.addView(title);
+        Ui.space(top, 16);
         HorizontalScrollView scroller = new HorizontalScrollView(activity);
         scroller.setHorizontalScrollBarEnabled(false);
         scroller.setFillViewport(true);
         LinearLayout options = new LinearLayout(activity);
         scroller.addView(options, new HorizontalScrollView.LayoutParams(-1, -2));
-        addView(scroller, new LayoutParams(-1, -2));
+        top.addView(scroller, new LayoutParams(-1, -2));
         for (int index = 0; index < choices.length; index++) {
             final int mode = index;
             LinearLayout choice = Ui.column(activity);
@@ -94,8 +98,12 @@ final class WidgetThemeControls extends LinearLayout {
                 () -> IconColorDialog.show(activity, "组件背景颜色", theme.color, false,
                         color -> update(new WidgetTheme(WidgetTheme.CUSTOM, theme.transparency, color))));
         custom.setTag("widget-custom-color");
+        custom.setPadding(Ui.dp(activity, 16), 0, Ui.dp(activity, 16), 0);
         addView(custom, new LayoutParams(-1, -2));
-        Ui.space(this, 12);
+        LinearLayout controls = Ui.column(activity);
+        controls.setPadding(Ui.dp(activity, 16), 0, Ui.dp(activity, 16), 0);
+        addView(controls, new LayoutParams(-1, -2));
+        Ui.space(controls, 12);
         opacityValue = Ui.text(activity, "", 13, R.color.muted);
         opacityValue.setTag("widget-transparency-value");
         opacity = new Slider(activity);
@@ -110,7 +118,7 @@ final class WidgetThemeControls extends LinearLayout {
             if (!binding)
                 update(new WidgetTheme(theme.mode, Math.round(value), theme.color));
         });
-        Ui.sliderRow(this, "背景透明度", opacity, opacityValue, WidgetTheme.defaults().transparency);
+        Ui.sliderRow(controls, "背景透明度", opacity, opacityValue, WidgetTheme.defaults().transparency);
         bind(theme);
     }
 

@@ -10,6 +10,7 @@ import java.util.*;
  */
 final class MainStyle {
     static final int APP = 0, WALLPAPER = 2, IMAGE = 3, CUSTOM_IMAGE = 4;
+    static final int MATERIAL_OPAQUE = 0, MATERIAL_SYSTEM = 1, MATERIAL_GLASS = 2;
     static final String[] REASONS = {"不显示", "简略", "详细"};
     final int iconDp, labelSp, background, reasons, transparency, blur;
     final boolean showHidden;
@@ -37,11 +38,19 @@ final class MainStyle {
     }
 
     static boolean liquid(Context context) {
-        return Repository.prefs(context).getBoolean("main.liquid", true);
+        return material(context) != MATERIAL_OPAQUE;
+    }
+
+    static int material(Context context) {
+        SharedPreferences prefs = Repository.prefs(context);
+        if (!prefs.contains("main.material"))
+            return prefs.getBoolean("main.liquid", true) ? MATERIAL_GLASS : MATERIAL_OPAQUE;
+        int mode = prefs.getInt("main.material", MATERIAL_GLASS);
+        return mode >= MATERIAL_OPAQUE && mode <= MATERIAL_GLASS ? mode : MATERIAL_GLASS;
     }
 
     static int startTab(Context context) {
-        return Repository.prefs(context).getInt("main.start_tab", 0) == 2 ? 2 : 0;
+        return Repository.prefs(context).getInt("main.start_tab", 0) == 1 ? 1 : 0;
     }
 
     static MainStyle load(Context context) {

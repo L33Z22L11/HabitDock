@@ -1,7 +1,6 @@
 package dev.habitdock;
 
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Path;
 import android.graphics.RectF;
@@ -29,7 +28,7 @@ final class ObricGlass {
     private Class<?> api;
 
     static boolean available(android.content.Context context) {
-        return MainStyle.liquid(context) && SUPPORTED;
+        return MainStyle.material(context) == MainStyle.MATERIAL_GLASS && SUPPORTED;
     }
 
     private static boolean supported() {
@@ -99,7 +98,7 @@ final class ObricGlass {
     }
 
     private void apply() {
-        if (!MainStyle.liquid(view.getContext()) || failed || !view.isAttachedToWindow()
+        if (!available(view.getContext()) || failed || !view.isAttachedToWindow()
                 || !view.isHardwareAccelerated()
                 || view.getWidth() == 0 || view.getHeight() == 0)
             return;
@@ -130,7 +129,7 @@ final class ObricGlass {
                     Float.intBitsToFloat(dark ? 0x33ffffff : 0x1affffff), 102, 0};
             invoke(api, parameters, "setObricLiquidGlassEffectRR", new Class<?>[]{float[].class}, (Object) rr);
             GradientDrawable background = new GradientDrawable();
-            background.setColor(topOnly ? GlassFallback.tint(view.getContext(), 40) : Color.TRANSPARENT);
+            background.setColor(GlassFallback.tint(view.getContext(), 40));
             if (topOnly) {
                 float r = radius();
                 background.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
